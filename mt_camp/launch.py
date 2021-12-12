@@ -108,6 +108,7 @@ class Launcher:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.chat("Server closed.")
+        await asyncio.subprocess.create_subprocess_exec("/usr/bin/sudo", "/usr/sbin/poweroff")
 
     async def chat(self, message: str):
         payload = {"content": message}

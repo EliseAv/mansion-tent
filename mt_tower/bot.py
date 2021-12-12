@@ -27,6 +27,9 @@ class MyClient(Bot):
 
     async def play(self, ctx: Context):
         """ Starts the Factorio server for play! """
+        if ctx.channel.id != cfg.discord_channel:
+            return  # wrong channel
+
         if self.launching:
             log.warning("Already launching.")
             await ctx.message.add_reaction(Reaction.stop.value)
