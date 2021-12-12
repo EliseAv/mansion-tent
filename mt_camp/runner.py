@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import sys
 import typing as t
@@ -8,6 +9,8 @@ from mt_camp.configuration import cfg
 
 if t.TYPE_CHECKING:
     from mt_camp.launch import Launcher
+
+log = logging.getLogger(__name__)
 
 SECOND = 1000000000
 START_WAIT_NS = int(cfg.start_wait_seconds * SECOND)
@@ -96,7 +99,7 @@ class Runner:
             # Looks like the server is empty! Time for a countdown.
             exit_in = self.exit_at - time_ns()
 
-        print("No activity! Exiting!")
+        log.info("No activity! Exiting!")
         self.process.stdin.write(b"/quit\n")
 
     matcher = MessageMatcher()

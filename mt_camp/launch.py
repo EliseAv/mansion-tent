@@ -1,4 +1,5 @@
 import asyncio.subprocess
+import logging
 import os
 import socket
 import subprocess
@@ -13,6 +14,9 @@ import aiohttp
 
 from mt_camp.configuration import cfg
 from mt_camp.runner import Runner
+
+log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 async def main():
@@ -98,7 +102,7 @@ class Launcher:
     async def saving_finished(self):
         save = max(self.saves.glob("*.zip"), key=_get_mtime)
         await self.bucket.upload_file(str(save), cfg.s3_key_prefix + save.name)
-        print("Saved:", save)
+        log.info("Saved: %s", save)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.chat("Server closed.")
@@ -107,7 +111,7 @@ class Launcher:
         payload = {"content": message}
         async with self.http.post(cfg.discord_webhook, json=payload) as response:
             if response.status >= 300:
-                print("Discord said", response.status, "to", payload)
+                log.warning("Discord said %s to %s", response.status, payload)
 
 
 def _get_mtime(path: Path) -> float:
