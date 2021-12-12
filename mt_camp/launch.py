@@ -11,6 +11,7 @@ from pathlib import Path
 
 import aioboto3
 import aiohttp
+import botocore.exceptions
 
 from mt_camp.configuration import cfg
 from mt_camp.runner import Runner
@@ -49,10 +50,11 @@ class Launcher:
                 await asyncio.get_running_loop().run_in_executor(None, tar.extractall)
 
     async def download_config(self):
-        if sys.version_info >= (3, 0):
-            return
         with tempfile.TemporaryFile() as f:
-            await self.bucket.download_fileobj(f"{cfg.s3_key_prefix}config.tar.gz", f)
+            try:
+                await self.bucket.download_fileobj(f"{cfg.s3_key_prefix}config.tar.gz", f)
+            except botocore.exceptions.ClientError:
+                return  # not essential
             f.seek(0)  # rewind
             with tarfile.open(fileobj=f, mode="r:gz") as tar:
                 await asyncio.get_running_loop().run_in_executor(None, tar.extractall)
