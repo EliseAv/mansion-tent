@@ -1,4 +1,4 @@
 /.idea
 /factorio*
 __pycache__
-configuration.json
+config*.json

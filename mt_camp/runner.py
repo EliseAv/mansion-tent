@@ -112,6 +112,7 @@ class Runner:
     )
     async def __event_launched(self, _: re.Match):
         await self.launcher.announce_my_ip_address()
+        self.exit_at = START_WAIT_NS + time_ns()  # reset startup wait
 
     @matcher(re.compile(r"^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$"))
     async def __event_joined(self, match: re.Match):

@@ -13,6 +13,8 @@ class Configuration:
     ec2_security_group = ""
     ec2_key_pair = ""
     ec2_iam_role = ""
+    r53_zone_id = ""
+    r53_record_name = "factorio"
 
     def __init__(self):
         payload = json.load(Path(__file__).resolve().with_suffix(".json").open())

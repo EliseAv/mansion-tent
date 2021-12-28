@@ -3,7 +3,6 @@ import logging
 import os
 import socket
 import subprocess
-import sys
 import tarfile
 import tempfile
 import typing as t
@@ -32,6 +31,7 @@ class Launcher:
         self.http = http
         self.bucket = bucket
         self.saves = Path("factorio", "saves").resolve()
+        self.sending = asyncio.Lock()
 
     async def __aenter__(self):
         await asyncio.gather(self.download_game(), self.download_config(), self.download_save())
@@ -89,7 +89,7 @@ class Launcher:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(("10.255.255.255", 1))  # doesn't even have to be reachable
                 result = s.getsockname()[0]
-        await self.chat(f"Server is ready at: `{result}`")
+        await self.chat(f"Server is ready at: `{result}` (`{cfg.public_hostname}`)")
 
     async def announce_players_change(self, players: t.Set[str], join: str = "", leave: str = ""):
         number = len(players)
@@ -103,15 +103,25 @@ class Launcher:
 
     async def saving_finished(self):
         save = max(self.saves.glob("*.zip"), key=_get_mtime)
-        await self.bucket.upload_file(str(save), cfg.s3_key_prefix + save.name)
+        async with self.sending:
+            await self.bucket.upload_file(str(save), cfg.s3_key_prefix + save.name)
         log.info("Saved: %s", save)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.chat("Server closed.")
+
+        # make sure we will save before we terminate
+        await asyncio.sleep(1)
+        await self.sending.acquire()
+
+        # terminate
         await asyncio.subprocess.create_subprocess_exec("/usr/bin/sudo", "/usr/sbin/poweroff")
 
     async def chat(self, message: str):
         payload = {"content": message}
+        if not cfg.discord_webhook:
+            log.info("Would have chatted: %s", payload)
+            return
         async with self.http.post(cfg.discord_webhook, json=payload) as response:
             if response.status >= 300:
                 log.warning("Discord said %s to %s", response.status, payload)
