@@ -5,10 +5,10 @@ import sys
 import typing as t
 from time import time_ns
 
-from mt_camp.configuration import cfg
+from .configuration import cfg
 
 if t.TYPE_CHECKING:
-    from mt_camp.launch import Launcher
+    from .launch import Launcher
 
 log = logging.getLogger(__name__)
 
@@ -128,7 +128,3 @@ class Runner:
         if not self.players:
             self.exit_at = DRAIN_WAIT_NS + time_ns()
             self.watcher.set()
-
-    @matcher(re.compile(r"^\s*\d+\.\d+ Info AppManagerStates\.cpp:\d+: Saving finished$"))
-    async def __event_saved(self, _: re.Match):
-        await self.launcher.saving_finished()

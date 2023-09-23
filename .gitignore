@@ -1,4 +1,7 @@
 /.idea
+/.vscode
 /factorio*
 __pycache__
 config*.json
+dispatcher-ip.txt
+requirements.txt

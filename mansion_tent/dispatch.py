@@ -8,8 +8,7 @@ from pathlib import Path
 
 import aioboto3
 
-from mt_tower.configuration import cfg
-from mt_tower.reaction import Reaction
+from .configuration import cfg
 
 log = logging.getLogger(__name__)
 
@@ -18,37 +17,21 @@ class Dispatcher:
     def __init__(self):
         session = aioboto3.Session()
         self.ec2 = session.client("ec2")
-        self.r53 = session.client("route53")
-        self.s3 = session.resource("s3")
         self.bucket = None
 
     async def __aenter__(self):
         self.ec2 = await self.ec2.__aenter__()
-        self.r53 = await self.r53.__aenter__()
-        self.s3 = await self.s3.__aenter__()
-        self.bucket = await self.s3.Bucket(cfg.s3_bucket)
         return self
 
-    async def __aexit__(self, *_):
-        await self.s3.__aexit__(*_)
-        await self.r53.__aexit__(*_)
-        await self.ec2.__aexit__(*_)
+    async def __aexit__(self, *args):
+        await self.ec2.__aexit__(*args)
 
-    async def launch(self) -> Reaction:
-        if await self.is_it_already_running():
-            return Reaction.stop
-
+    async def launch(self):
         ami, userdata = await asyncio.gather(self.find_ami(), self.build_userdata())
         instance_id = await self.run_instance(ami, userdata)
         log.info("Launched instance %s", instance_id)
         await self.update_dns(instance_id)
         log.info("DNS updated. Launch finished.")
-
-        return Reaction.built
-
-    @staticmethod
-    async def is_it_already_running() -> bool:  # TODO
-        return False
 
     async def find_ami(self) -> str:
         query = [{"Name": "name", "Values": [cfg.ec2_ami_query]}]
