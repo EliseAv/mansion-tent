@@ -13,8 +13,9 @@ if t.TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 SECOND = 1000000000
-START_WAIT_NS = int(cfg.start_wait_seconds * SECOND)
-DRAIN_WAIT_NS = int(cfg.drain_wait_seconds * SECOND)
+MINUTE = 60 * SECOND
+START_WAIT_NS = int(cfg.autoquit_start_wait_minutes * MINUTE)
+DRAIN_WAIT_NS = int(cfg.autoquit_drain_wait_minutes * MINUTE)
 
 
 class MessageMatcher(dict):
@@ -89,7 +90,7 @@ class Runner:
     async def watch_number_of_players(self):
         exit_in = self.exit_at - time_ns()
         while exit_in > 0:
-            await asyncio.sleep(exit_in / SECOND)
+            await asyncio.sleep(exit_in / MINUTE)
 
             # If there are players, sleep until there aren't.
             if self.players:
@@ -128,3 +129,12 @@ class Runner:
         if not self.players:
             self.exit_at = DRAIN_WAIT_NS + time_ns()
             self.watcher.set()
+
+
+def main():
+    print("This module is not meant to be run directly.")
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,10 +1,10 @@
 import asyncio.subprocess
 import logging
 import os
-from pathlib import Path
 import socket
 import subprocess
 import typing as t
+from pathlib import Path
 
 import aiohttp
 
@@ -15,21 +15,21 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-async def main():
-    async with Launcher() as launcher:
-        await launcher.run()
-
-
 class Launcher:
-    def __init__(self):
-        self.http = aiohttp.ClientSession()
+    @classmethod
+    async def main(cls):
+        async with aiohttp.ClientSession() as http, cls(http) as launcher:
+            await launcher.run()
+
+    def __init__(self, http: aiohttp.ClientSession):
+        self.http = http
 
     async def __aenter__(self):
-        self.http = await self.http.__aenter__()
         return self
 
     async def run(self):
-        os.chdir("factorio")
+        base_path = Path(__file__).resolve().parent.parent.joinpath("factorio")
+        os.chdir(base_path)
         args = ["bin/x64/factorio", "--start-server", "saves/world.zip"]
         if Path("server-settings.json").exists():
             args.extend(("--server-settings", "server-settings.json"))
@@ -60,9 +60,15 @@ class Launcher:
             person = ", ".join(sorted(players))
         await self.chat(f"[`{number:2}`] {person}")
 
-    async def __aexit__(self, *args):
-        await self.chat("Server closed.")
-        await self.http.__aexit__(*args)
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # announce
+        if exc_type:
+            try:
+                await self.chat(f"Server crashed: `{exc_type.__name__}: {exc_val}`")
+            except aiohttp.ClientError:
+                pass
+        else:
+            await self.chat("Server shut down")
 
         # terminate
         await asyncio.subprocess.create_subprocess_exec("/usr/bin/sudo", "/usr/sbin/poweroff")
@@ -72,10 +78,15 @@ class Launcher:
         if not cfg.discord_webhook:
             log.info("Would have chatted: %s", payload)
             return
+
         async with self.http.post(cfg.discord_webhook, json=payload) as response:
             if response.status >= 300:
                 log.warning("Discord said %s to %s", response.status, payload)
 
 
+def main():
+    asyncio.run(Launcher.main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

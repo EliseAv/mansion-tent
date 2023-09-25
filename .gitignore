@@ -3,5 +3,5 @@
 /factorio*
 __pycache__
 config*.json
-dispatcher-ip.txt
+poetry.lock
 requirements.txt

@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "mansion-tent"
+version = "23.0"
+description = ""
+authors = ["Elise Avila <871714+EliseAv@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "mansion_tent"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+aioboto3 = "^11.3.0"
+aiohttp = "^3.8.5"
+
+[tool.poetry.scripts]
+dispatch = "mansion_tent.dispatch:main"
+launch = "mansion_tent.launch:main"
+
+[tool.black]
+line-length = 120
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
