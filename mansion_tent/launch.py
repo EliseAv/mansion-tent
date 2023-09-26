@@ -1,7 +1,6 @@
 import asyncio.subprocess
 import logging
 import os
-import socket
 import subprocess
 import typing as t
 from pathlib import Path
@@ -40,14 +39,9 @@ class Launcher:
 
     async def announce_my_ip_address(self):
         url = "http://169.254.169.254/latest/meta-data/public-ipv4"
-        try:
-            async with self.http.get(url) as response:
-                result = await response.text()
-        except aiohttp.ClientError:
-            # https://stackoverflow.com/a/28950776/98029
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.connect(("143.54.1.1", 9))  # doesn't even have to be reachable
-                result = s.getsockname()[0]
+        async with self.http.get(url) as response:
+            response.raise_for_status()
+            result = await response.text()
         await self.chat(f"Server is ready at: `{result}`")
 
     async def announce_players_change(self, players: t.Set[str], join: str = "", leave: str = ""):

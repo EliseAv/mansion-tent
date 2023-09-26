@@ -65,6 +65,7 @@ async def run_instance(ec2, ami: str, userdata: bytes) -> str:
             }
             for r in ("instance", "volume")
         ],
+        "MetadataOptions": {"HttpTokens": "optional"},
     }
     if cfg.ec2_subnet_id:
         args["SubnetId"] = cfg.ec2_subnet_id
