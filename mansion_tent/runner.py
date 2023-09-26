@@ -69,8 +69,12 @@ class Runner:
 
         line = await reader.readline()
         while line:
-            writer.write(line)
-            line = await reader.readline()
+            try:
+                writer.write(line)
+                line = await reader.readline()
+            except:
+                log.exception("Error while handling input", exc_info=True)
+                line = ""
 
     async def handle_output(self, reader: asyncio.StreamReader, sync_writer: t.TextIO, matcher=None):
         # https://stackoverflow.com/a/64317899/98029
@@ -83,9 +87,13 @@ class Runner:
 
         line = await reader.readline()
         while line:
-            writer.write(line)
-            matcher.dispatch(self, line.decode())
-            line = await reader.readline()
+            try:
+                writer.write(line)
+                matcher.dispatch(self, line.decode())
+                line = await reader.readline()
+            except:
+                log.exception("Error while handling output", exc_info=True)
+                line = ""
 
     async def watch_number_of_players(self):
         exit_in = self.exit_at - time_ns()

@@ -1,4 +1,4 @@
-import asyncio.subprocess
+import asyncio
 import logging
 import os
 import subprocess
@@ -65,7 +65,7 @@ class Launcher:
             await self.chat("Server shut down")
 
         # terminate
-        await asyncio.subprocess.create_subprocess_exec("/usr/bin/sudo", "/usr/sbin/poweroff")
+        await asyncio.create_subprocess_exec("/usr/bin/sudo", "/usr/sbin/poweroff")
 
     async def chat(self, message: str):
         payload = {"content": message}
