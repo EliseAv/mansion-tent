@@ -67,14 +67,15 @@ class Runner:
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sync_reader)
 
-        line = await reader.readline()
-        while line:
-            try:
+        try:
+            line = await reader.readline()
+            while line:
                 writer.write(line)
                 line = await reader.readline()
-            except:
-                log.exception("Error while handling input", exc_info=True)
-                line = ""
+        except asyncio.CancelledError:
+            pass
+        except:
+            log.exception("Error while handling input", exc_info=True)
 
     async def handle_output(self, reader: asyncio.StreamReader, sync_writer: t.TextIO, matcher=None):
         # https://stackoverflow.com/a/64317899/98029
@@ -85,15 +86,16 @@ class Runner:
         if not matcher:
             matcher = MessageMatcher()
 
-        line = await reader.readline()
-        while line:
-            try:
+        try:
+            line = await reader.readline()
+            while line:
                 writer.write(line)
                 matcher.dispatch(self, line.decode())
                 line = await reader.readline()
-            except:
-                log.exception("Error while handling output", exc_info=True)
-                line = ""
+        except asyncio.CancelledError:
+            pass
+        except:
+            log.exception("Error while handling output", exc_info=True)
 
     async def watch_number_of_players(self):
         exit_in = self.exit_at - time_ns()

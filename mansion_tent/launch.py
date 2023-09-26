@@ -55,6 +55,10 @@ class Launcher:
         await self.chat(f"[`{number:2}`] {person}")
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # make sure instance termination happens
+        arguments = ["/usr/bin/sudo", "/usr/sbin/shutdown"]  # 1 minute delay
+        asyncio.create_task(asyncio.create_subprocess_exec(*arguments))
+
         # announce
         if exc_type:
             try:
@@ -63,9 +67,6 @@ class Launcher:
                 pass
         else:
             await self.chat("Server shut down")
-
-        # terminate
-        await asyncio.create_subprocess_exec("/usr/bin/sudo", "/usr/sbin/poweroff")
 
     async def chat(self, message: str):
         payload = {"content": message}
