@@ -125,6 +125,7 @@ func (s *sitter) bumpShutdownCheck() {
 
 func (s *sitter) watchForShutdown() {
 	for wait := time.Until(s.nextShutdownCheck); wait > 0; wait = time.Until(s.nextShutdownCheck) {
+		fmt.Printf("\033[1;34mWaiting %s for shutdown check...\033[0m\n", wait)
 		time.Sleep(wait)
 		if len(s.players) > 0 {
 			// i know this looks like a busy wait, but it's minutes per loop; it'll be fine

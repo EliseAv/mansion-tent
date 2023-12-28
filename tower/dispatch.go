@@ -16,21 +16,23 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/joho/godotenv"
 )
 
-type launcher struct {
+type dispatcher struct {
 	aws      *session.Session
 	ec2      *ec2.EC2
 	r53      *route53.Route53
 	s3       *s3.S3
 	s3folder url.URL
+	userdata *string
 	trying   bool
 	err      error
 	ip       string
 }
 
 var (
-	Launcher launcher
+	Dispatcher dispatcher
 
 	ErrAlreadyRunning  = errors.New("instance already running")
 	ErrNoAMI           = errors.New("no AMI found")
@@ -41,24 +43,25 @@ func init() {
 	session := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-	Launcher.aws = session
+	Dispatcher.aws = session
 	session.Config.Region = aws.String(os.Getenv("AWS_REGION"))
-	Launcher.ec2 = ec2.New(session)
-	Launcher.r53 = route53.New(session)
-	Launcher.s3 = s3.New(session)
+	Dispatcher.ec2 = ec2.New(session)
+	Dispatcher.r53 = route53.New(session)
+	Dispatcher.s3 = s3.New(session)
 
 	parsed, err := url.Parse(os.Getenv("S3_FOLDER_URL"))
 	if err != nil {
 		panic(err)
 	}
 	parsed.Path = strings.Trim(parsed.Path, "/")
-	Launcher.s3folder = *parsed
-	Launcher.s3folder.Path = strings.Trim(Launcher.s3folder.Path, "/")
+	Dispatcher.s3folder = *parsed
+	Dispatcher.s3folder.Path = strings.Trim(Dispatcher.s3folder.Path, "/")
+	Dispatcher.userdata = Dispatcher.generateUserData()
 
-	Launcher.uploadSupportingFiles()
+	Dispatcher.uploadSupportingFiles()
 }
 
-func (l *launcher) ConsoleLaunch() {
+func (l *dispatcher) ConsoleLaunch() {
 	l.LaunchFactorio()
 	if l.err != nil {
 		fmt.Printf("Launcher error: %s\n", l.err)
@@ -67,7 +70,7 @@ func (l *launcher) ConsoleLaunch() {
 	}
 }
 
-func (l *launcher) uploadSupportingFiles() {
+func (l *dispatcher) uploadSupportingFiles() {
 	// get the directory of the executable
 	executable, err := os.Executable()
 	if err != nil {
@@ -89,7 +92,7 @@ func (l *launcher) uploadSupportingFiles() {
 	}
 }
 
-func (l *launcher) LaunchFactorio() {
+func (l *dispatcher) LaunchFactorio() {
 	defer func() {
 		l.err = recover().(error)
 		if l.err != nil {
@@ -106,7 +109,7 @@ func (l *launcher) LaunchFactorio() {
 	l.trying = false
 }
 
-func (l *launcher) getLatestAmazonLinuxAMI() *ec2.Image {
+func (l *dispatcher) getLatestAmazonLinuxAMI() *ec2.Image {
 	params := &ec2.DescribeImagesInput{Filters: []*ec2.Filter{{
 		Name:   aws.String("name"),
 		Values: []*string{aws.String("al2023-ami-2*-x86_64")},
@@ -131,7 +134,7 @@ func (l *launcher) getLatestAmazonLinuxAMI() *ec2.Image {
 	return latestAmi
 }
 
-func (l *launcher) getDefaultSecurityGroup() *ec2.SecurityGroup {
+func (l *dispatcher) getDefaultSecurityGroup() *ec2.SecurityGroup {
 	params := &ec2.DescribeSecurityGroupsInput{
 		GroupNames: []*string{aws.String("default")},
 	}
@@ -145,24 +148,36 @@ func (l *launcher) getDefaultSecurityGroup() *ec2.SecurityGroup {
 	return resp.SecurityGroups[0]
 }
 
-func (l *launcher) generateUserData() *string {
+func (l *dispatcher) generateUserData() *string {
 	url := os.Getenv("S3_FOLDER_URL")
+	values, err := godotenv.Read()
+	if err != nil {
+		panic(err)
+	}
+	values["TENT_MODE"] = "launch"
+	marshalled, err := godotenv.Marshal(values)
+	if err != nil {
+		panic(err)
+	}
 	lines := "#!/bin/bash\n" +
-		"aws s3 sync " + url + " /opt/mansionTent\n" +
-		"chmod +x /opt/mansionTent/mt.x86\n" +
-		"sudo -iu ec2-user screen -dm /opt/mansionTent/mt.x86 tent\n"
+		"mkdir -p /opt/mansionTent\n" +
+		"aws s3 cp " + url + "/mansionTent /opt/mansionTent/mansionTent\n" +
+		"chmod +x /opt/mansionTent/mansionTent\n" +
+		"cat << EOF > /opt/mansionTent/.env\n" +
+		marshalled + "\nEOF\n" +
+		"sudo -iu ec2-user screen -dm /opt/mansionTent/mansionTent\n"
 	encoded := base64.StdEncoding.EncodeToString([]byte(lines))
 	return &encoded
 }
 
-func (l *launcher) createInstance() {
+func (l *dispatcher) createInstance() {
 	params := &ec2.RunInstancesInput{
 		ImageId:          l.getLatestAmazonLinuxAMI().ImageId,
 		InstanceType:     aws.String(os.Getenv("EC2_INSTANCE_TYPE")),
 		MinCount:         aws.Int64(1),
 		MaxCount:         aws.Int64(1),
 		SecurityGroupIds: []*string{l.getDefaultSecurityGroup().GroupId},
-		UserData:         l.generateUserData(),
+		UserData:         l.userdata,
 		DryRun:           aws.Bool(false),
 		IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
 			Name: aws.String(os.Getenv("EC2_IAM_ROLE")),
@@ -186,7 +201,7 @@ func (l *launcher) createInstance() {
 	l.ip = *reservation.Instances[0].PublicIpAddress
 }
 
-func (l *launcher) checkIfAlreadyRunning() {
+func (l *dispatcher) checkIfAlreadyRunning() {
 	params := &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{{
 			Name:   aws.String("tag:Name"),
@@ -207,7 +222,7 @@ func (l *launcher) checkIfAlreadyRunning() {
 	}
 }
 
-func (l *launcher) updateDnsRecord() {
+func (l *dispatcher) updateDnsRecord() {
 	zoneId := os.Getenv("ROUTE53_ZONE_ID")
 	if zoneId == "" {
 		return
@@ -235,7 +250,7 @@ func (l *launcher) updateDnsRecord() {
 	}
 }
 
-func (l *launcher) UploadToS3(name string, file io.ReadSeeker) error {
+func (l *dispatcher) UploadToS3(name string, file io.ReadSeeker) error {
 	if l.s3folder.Path != "" {
 		name = l.s3folder.Path + "/" + name
 	}

@@ -18,38 +18,45 @@ import (
 	"github.com/xi2/xz"
 )
 
-type tent struct {
+type launcher struct {
 	aws      *session.Session
 	s3       *s3.S3
 	s3folder url.URL
 }
 
-var Tent tent
+var Launcher launcher
 
 func init() {
-	Tent.aws = session.Must(session.NewSessionWithOptions(session.Options{
+	Launcher.aws = session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-	Tent.aws.Config.Region = aws.String(os.Getenv("AWS_REGION"))
-	Tent.s3 = s3.New(Tent.aws)
+	Launcher.aws.Config.Region = aws.String(os.Getenv("AWS_REGION"))
+	Launcher.s3 = s3.New(Launcher.aws)
 
 	parsed, err := url.Parse(os.Getenv("S3_FOLDER_URL"))
 	if err != nil {
 		panic(err)
 	}
 	parsed.Path = strings.Trim(parsed.Path, "/")
-	Tent.s3folder = *parsed
-	Tent.s3folder.Path = strings.Trim(Tent.s3folder.Path, "/")
+	Launcher.s3folder = *parsed
+	Launcher.s3folder.Path = strings.Trim(Launcher.s3folder.Path, "/")
 }
 
-func (t *tent) Run() {
-	t.downloadGame()
-	t.copyFiles()
+func (t *launcher) Run() {
+	errors := make(chan any)
+	go t.downloadGame(errors)
+	go t.downloadState(errors)
+	for i := 0; i < 2; i++ {
+		if err := <-errors; err != nil {
+			panic(err)
+		}
+	}
 	os.Chdir("factorio")
 	Sitter.Run()
 }
 
-func (t *tent) downloadGame() {
+func (t *launcher) downloadGame(errors chan any) {
+	defer func() { errors <- recover() }()
 	// check if we need to do this
 	_, err := os.Stat("factorio/bin/x64/factorio")
 	if err == nil {
@@ -99,9 +106,11 @@ func (t *tent) downloadGame() {
 			}()
 		}
 	}
+	fmt.Println("Downloaded game files")
 }
 
-func (t *tent) copyFiles() {
+func (t *launcher) downloadState(channel chan any) {
+	defer func() { channel <- recover() }()
 	// check if we need to do this
 	_, err := os.Stat("factorio/saves")
 	if err == nil {
@@ -109,53 +118,70 @@ func (t *tent) copyFiles() {
 	} else if !os.IsNotExist(err) {
 		panic(err)
 	}
-	// get the directory of the executable
-	executable, err := os.Executable()
-	if err != nil {
-		panic(err)
+	// start downloaders
+	queue := make(chan *string, 5)
+	for i := 0; i < cap(queue); i++ {
+		go func() {
+			for key := range queue {
+				if key == nil {
+					return
+				}
+				t.downloadOneFile(key)
+			}
+		}()
 	}
-	executableDir := filepath.Dir(executable)
-	// traverse executable dir and copy everything to working directory
-	filepath.Walk(executableDir, func(path string, info os.FileInfo, err error) error {
+	// enumerate files from s3
+	log.Printf("Downloading save files from %s\n", t.s3folder.String())
+	request := &s3.ListObjectsInput{
+		Bucket: aws.String(t.s3folder.Host),
+		Prefix: aws.String(t.s3folder.Path + "/"),
+	}
+	for nextPage := aws.String("first"); nextPage != nil; nextPage = request.Marker {
+		response, err := t.s3.ListObjects(request)
 		if err != nil {
 			panic(err)
 		}
-		relativePath := strings.TrimPrefix(path, executableDir)
-		if relativePath == "" {
-			log.Println("Skipping root directory")
-		} else if info.IsDir() {
-			log.Printf("Creating directory %s\n", relativePath)
-			err = os.MkdirAll(relativePath, info.Mode())
-			if err != nil {
-				panic(err)
+		for _, object := range response.Contents {
+			// dunno if this can be nil, but if it ever happens there will be a deadlock
+			if object.Key != nil {
+				queue <- object.Key
 			}
-		} else if info.Mode().IsRegular() {
-			log.Printf("Copying %s\n", relativePath)
-			srcFile, err := os.Open(path)
-			if err != nil {
-				panic(err)
-			}
-			defer srcFile.Close()
-			dstFile, err := os.OpenFile(relativePath, os.O_CREATE|os.O_WRONLY, info.Mode())
-			if err != nil {
-				panic(err)
-			}
-			defer dstFile.Close()
-			_, err = io.Copy(dstFile, srcFile)
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			log.Printf("Skipping %s (mode %o)\n", relativePath, info.Mode())
 		}
-		return nil
+		request.Marker = response.NextMarker
+	}
+	// wait for downloaders to finish
+	for i := 0; i < cap(queue); i++ {
+		queue <- nil
+	}
+	fmt.Println("Downloaded save and config/mod files")
+}
+
+func (t *launcher) downloadOneFile(key *string) {
+	fmt.Printf("Downloading %s\n", *key)
+	destPath := strings.TrimPrefix(*key, t.s3folder.Path+"/")
+	// download the source file
+	response, err := t.s3.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(t.s3folder.Host),
+		Key:    key,
 	})
+	if err != nil {
+		panic(err)
+	}
+	defer response.Body.Close()
+	// create the destination file
+	file, err := os.Create(destPath)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	// copy the file
+	_, err = io.Copy(file, response.Body)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (t *tent) uploadSave() {
+func (t *launcher) uploadSave() {
 	// get the most recent save
 	var mostRecent os.FileInfo
 	var mostRecentTime time.Time
@@ -188,8 +214,8 @@ func (t *tent) uploadSave() {
 	}
 	defer file.Close()
 	_, err = t.s3.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String(Tent.s3folder.Host),
-		Key:    aws.String(Tent.s3folder.Path + "/" + mostRecent.Name()),
+		Bucket: aws.String(Launcher.s3folder.Host),
+		Key:    aws.String(Launcher.s3folder.Path + "/" + mostRecent.Name()),
 		Body:   file,
 	})
 	if err != nil {

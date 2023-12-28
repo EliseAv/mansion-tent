@@ -87,13 +87,13 @@ func (b *bot) onCommandFactorio(s *discordgo.Session, i *discordgo.InteractionCr
 		return
 	}
 	b.replyLater(i)
-	Launcher.LaunchFactorio()
-	if Launcher.err != nil {
-		b.replyAmend(i, "Error: "+Launcher.err.Error())
+	Dispatcher.LaunchFactorio()
+	if Dispatcher.err != nil {
+		b.replyAmend(i, "Error: "+Dispatcher.err.Error())
 	} else {
 		b.replyAmend(i, fmt.Sprintf(
 			"Factorio server starting at `%s` (`%s`)",
-			os.Getenv("ROUTE53_FQDN"), Launcher.ip))
+			os.Getenv("ROUTE53_FQDN"), Dispatcher.ip))
 	}
 }
 

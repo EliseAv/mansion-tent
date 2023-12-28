@@ -42,7 +42,7 @@ func (h *hooks) onLaunched() {
 }
 
 func (h *hooks) onSaved() {
-	Tent.uploadSave()
+	Launcher.uploadSave()
 }
 
 func (h *hooks) onJoined(name string) {

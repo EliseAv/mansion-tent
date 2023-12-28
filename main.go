@@ -17,16 +17,15 @@ func main() {
 	}
 
 	// check command-line arguments
-	fmt.Printf("args: %v\n", os.Args)
-	if len(os.Args) > 1 {
-		if os.Args[1] == "tent" {
-			tent.Tent.Run()
-		} else if os.Args[1] == "launch" {
-			tower.Launcher.ConsoleLaunch()
-		} else if os.Args[1] == "bot" {
-			tower.Bot.Run()
-		} else {
-			fmt.Println("Invalid argument.")
-		}
+	mode := os.Getenv("TENT_MODE")
+	switch mode {
+	case "":
+		tower.Bot.Run()
+	case "launch":
+		tent.Launcher.Run()
+	case "dispatch":
+		tower.Dispatcher.ConsoleLaunch()
+	default:
+		fmt.Println("Invalid mode:", mode)
 	}
 }
