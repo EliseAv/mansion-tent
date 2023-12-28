@@ -1,7 +1,4 @@
-/.idea
-/.vscode
-/factorio*
-__pycache__
-config*.json
-poetry.lock
-requirements.txt
+*.code-workspace
+.env
+.vscode
+mansionTent
