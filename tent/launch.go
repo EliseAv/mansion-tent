@@ -2,6 +2,7 @@ package tent
 
 import (
 	"archive/tar"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -150,5 +152,47 @@ func (t *tent) copyFiles() {
 	})
 	if err != nil {
 		panic(err)
+	}
+}
+
+func (t *tent) uploadSave() {
+	// get the most recent save
+	var mostRecent os.FileInfo
+	var mostRecentTime time.Time
+	filepath.Walk("saves", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".zip") {
+			modTime := info.ModTime()
+			if mostRecentTime.Before(modTime) {
+				mostRecentTime = info.ModTime()
+				mostRecent = info
+			}
+		}
+		return nil
+	})
+	if mostRecent == nil {
+		log.Println("No save files found")
+		return
+	}
+	// upload the save
+	log.Printf("Uploading save %s\n", mostRecent.Name())
+	file, err := os.Open(mostRecent.Name())
+	if err != nil {
+		fmt.Printf("Error opening file: %s\n", err)
+		return
+	}
+	defer file.Close()
+	_, err = t.s3.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(Tent.s3folder.Host),
+		Key:    aws.String(Tent.s3folder.Path + "/" + mostRecent.Name()),
+		Body:   file,
+	})
+	if err != nil {
+		fmt.Printf("Error uploading file: %s\n", err)
 	}
 }
