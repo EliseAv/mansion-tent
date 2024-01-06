@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strings"
 
@@ -58,7 +59,7 @@ func init() {
 	Dispatcher.s3folder.Path = strings.Trim(Dispatcher.s3folder.Path, "/")
 	Dispatcher.userdata = Dispatcher.generateUserData()
 
-	Dispatcher.uploadSupportingFiles()
+	Dispatcher.uploadExecutable()
 }
 
 func (l *dispatcher) ConsoleLaunch() {
@@ -70,26 +71,26 @@ func (l *dispatcher) ConsoleLaunch() {
 	}
 }
 
-func (l *dispatcher) uploadSupportingFiles() {
-	// get the directory of the executable
+func (l *dispatcher) uploadExecutable() {
 	executable, err := os.Executable()
 	if err != nil {
 		panic(err)
 	}
-	executableDir := filepath.Dir(executable)
-	// upload the files
-	filesToUpload := []string{"mt.x86", ".env"}
-	for _, file := range filesToUpload {
-		file, err := os.Open(executableDir + "/" + file)
-		if err != nil {
-			panic(err)
-		}
-		err = l.UploadToS3(file.Name(), file)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("Uploaded %s\n", file.Name())
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		// change the extension to .x64
+		extension := filepath.Ext(executable)
+		pos := len(executable) - len(extension)
+		executable = executable[:pos] + ".x64"
 	}
+	file, err := os.Open(executable)
+	if err != nil {
+		panic(err)
+	}
+	err = l.UploadToS3("mt.x64", file)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Uploaded %s\n", file.Name())
 }
 
 func (l *dispatcher) LaunchFactorio() {
@@ -150,7 +151,7 @@ func (l *dispatcher) getDefaultSecurityGroup() *ec2.SecurityGroup {
 
 func (l *dispatcher) generateUserData() *string {
 	url := os.Getenv("S3_FOLDER_URL")
-	values, err := godotenv.Read()
+	values, err := godotenv.Read("mt.env")
 	if err != nil {
 		panic(err)
 	}
@@ -161,13 +162,13 @@ func (l *dispatcher) generateUserData() *string {
 	}
 	lines := "#!/bin/bash\n" +
 		"mkdir -p /opt/mansionTent\n" +
-		"aws s3 cp " + url + "/mansionTent /opt/mansionTent/mansionTent\n" +
-		"chmod +x /opt/mansionTent/mansionTent\n" +
-		"cat << EOF > /opt/mansionTent/.env\n" +
+		"cat EOF > /opt/mansionTent/mt.env <<EOF\n" +
 		marshalled + "\nEOF\n" +
-		"sudo -iu ec2-user screen -dm /opt/mansionTent/mansionTent\n"
+		"aws s3 cp " + url + "/mt.x64 /opt/mansionTent/mt.x64\n" +
+		"chmod +x /opt/mansionTent/mt.x64\n" +
+		"sudo -iu ec2-user screen -dm /opt/mansionTent/mt.x64\n"
 	encoded := base64.StdEncoding.EncodeToString([]byte(lines))
-	return &encoded
+	return aws.String(encoded)
 }
 
 func (l *dispatcher) createInstance() {
