@@ -2,7 +2,6 @@ package tent
 
 import (
 	"archive/tar"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -18,20 +17,32 @@ import (
 	"github.com/xi2/xz"
 )
 
+type semaphore chan struct{}
+
+func (s semaphore) send() { s <- struct{}{} }
+func (s semaphore) waitCap() {
+	for i := cap(s); i > 0; i-- {
+		<-s
+	}
+}
+
 type launcher struct {
-	aws      *session.Session
 	s3       *s3.S3
 	s3folder url.URL
 }
 
 var Launcher launcher
 
-func init() {
-	Launcher.aws = session.Must(session.NewSessionWithOptions(session.Options{
+func AwsInit() {
+	region := os.Getenv("AWS_REGION_S3")
+	if region == "" {
+		region = os.Getenv("AWS_REGION")
+	}
+	aws := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
+		Config:            aws.Config{Region: aws.String(region)},
 	}))
-	Launcher.aws.Config.Region = aws.String(os.Getenv("AWS_REGION"))
-	Launcher.s3 = s3.New(Launcher.aws)
+	Launcher.s3 = s3.New(aws)
 
 	parsed, err := url.Parse(os.Getenv("S3_FOLDER_URL"))
 	if err != nil {
@@ -43,24 +54,21 @@ func init() {
 }
 
 func (t *launcher) Run() {
-	errors := make(chan any)
-	go t.downloadGame(errors)
-	go t.downloadState(errors)
-	for i := 0; i < 2; i++ {
-		if err := <-errors; err != nil {
-			panic(err)
-		}
-	}
+	done := make(semaphore, 2)
+	go t.downloadGame(done)
+	go t.downloadState(done)
+	done.waitCap()
 	os.Chdir("factorio")
 	Sitter.Run()
 }
 
-func (t *launcher) downloadGame(errors chan any) {
-	defer func() { errors <- recover() }()
+func (t *launcher) downloadGame(done semaphore) {
+	defer done.send()
 	// check if we need to do this
 	_, err := os.Stat("factorio/bin/x64/factorio")
 	if err == nil {
-		return // game is already downloaded
+		log.Printf("Game already downloaded\n")
+		return
 	} else if !os.IsNotExist(err) {
 		panic(err)
 	}
@@ -78,43 +86,51 @@ func (t *launcher) downloadGame(errors chan any) {
 	}
 	// we'll unpack everything as we download it
 	unpack := tar.NewReader(decompress)
-	for {
-		header, err := unpack.Next()
-		if err == io.EOF {
-			break // end of tar archive
-		} else if err != nil {
-			panic(err)
-		}
-		log.Printf("Unpacking %s\n", header.Name)
-		switch header.Typeflag {
-		case tar.TypeDir:
-			err = os.MkdirAll(header.Name, 0755)
-			if err != nil {
-				panic(err)
-			}
-		case tar.TypeReg:
-			func() {
-				file, err := os.Create(header.Name)
-				if err != nil {
-					panic(err)
-				}
-				defer file.Close()
-				_, err = io.Copy(file, unpack)
-				if err != nil {
-					panic(err)
-				}
-			}()
-		}
+	for t.unpackOneFile(unpack) {
 	}
-	fmt.Println("Downloaded game files")
+	log.Println("Downloaded game files")
 }
 
-func (t *launcher) downloadState(channel chan any) {
-	defer func() { channel <- recover() }()
+func (t *launcher) unpackOneFile(unpack *tar.Reader) bool {
+	header, err := unpack.Next()
+	if err == io.EOF {
+		return false // end of tar archive
+	} else if err != nil {
+		panic(err)
+	}
+	log.Printf("Unpacking %s\n", header.Name)
+	mode := header.FileInfo().Mode()
+	switch header.Typeflag {
+	case tar.TypeDir:
+		err := os.MkdirAll(header.Name, mode)
+		if err != nil {
+			panic(err)
+		}
+	case tar.TypeReg:
+		err := os.MkdirAll(filepath.Dir(header.Name), mode|mode>>2&0o111)
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(header.Name, os.O_CREATE|os.O_WRONLY, mode)
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+		_, err = io.Copy(file, unpack)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return true // continue unpacking
+}
+
+func (t *launcher) downloadState(done semaphore) {
+	defer done.send()
 	// check if we need to do this
 	_, err := os.Stat("factorio/saves")
 	if err == nil {
-		return // files are already copied over
+		log.Printf("State files already downloaded\n")
+		return
 	} else if !os.IsNotExist(err) {
 		panic(err)
 	}
@@ -153,11 +169,11 @@ func (t *launcher) downloadState(channel chan any) {
 	for i := 0; i < cap(queue); i++ {
 		queue <- nil
 	}
-	fmt.Println("Downloaded save and config/mod files")
+	log.Println("Downloaded save and config/mod files")
 }
 
 func (t *launcher) downloadOneFile(key *string) {
-	fmt.Printf("Downloading %s\n", *key)
+	log.Printf("Downloading %s\n", *key)
 	destPath := strings.TrimPrefix(*key, t.s3folder.Path+"/")
 	// download the source file
 	response, err := t.s3.GetObject(&s3.GetObjectInput{
@@ -209,7 +225,7 @@ func (t *launcher) uploadSave() {
 	log.Printf("Uploading save %s\n", mostRecent.Name())
 	file, err := os.Open(mostRecent.Name())
 	if err != nil {
-		fmt.Printf("Error opening file: %s\n", err)
+		log.Printf("Error opening file: %s\n", err)
 		return
 	}
 	defer file.Close()
@@ -219,6 +235,6 @@ func (t *launcher) uploadSave() {
 		Body:   file,
 	})
 	if err != nil {
-		fmt.Printf("Error uploading file: %s\n", err)
+		log.Printf("Error uploading file: %s\n", err)
 	}
 }

@@ -60,6 +60,8 @@ func (s *sitter) launch() {
 	s.proc = exec.Command("bin/x64/factorio", "--start-server", s.saveName)
 	err := s.proc.Start()
 	if err != nil {
+		cwd, _ := os.Getwd()
+		log.Printf("Working directory: %s\n", cwd)
 		panic(err)
 	}
 	s.stdout, err = s.proc.StdoutPipe()

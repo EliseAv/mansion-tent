@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"mansionTent/tent"
 	"mansionTent/tower"
@@ -20,12 +19,15 @@ func main() {
 	mode := os.Getenv("TENT_MODE")
 	switch mode {
 	case "":
+		tower.AwsInit()
 		tower.Bot.Run()
 	case "launch":
+		tent.AwsInit()
 		tent.Launcher.Run()
 	case "dispatch":
+		tower.AwsInit()
 		tower.Dispatcher.ConsoleLaunch()
 	default:
-		fmt.Println("Invalid mode:", mode)
+		log.Println("Invalid mode:", mode)
 	}
 }

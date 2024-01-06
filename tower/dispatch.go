@@ -3,8 +3,8 @@ package tower
 import (
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -40,12 +40,12 @@ var (
 	ErrNoSecurityGroup = errors.New("no security group found")
 )
 
-func init() {
+func AwsInit() {
 	session := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
+		Config:            aws.Config{Region: aws.String(os.Getenv("AWS_REGION"))},
 	}))
 	Dispatcher.aws = session
-	session.Config.Region = aws.String(os.Getenv("AWS_REGION"))
 	Dispatcher.ec2 = ec2.New(session)
 	Dispatcher.r53 = route53.New(session)
 	Dispatcher.s3 = s3.New(session)
@@ -65,9 +65,9 @@ func init() {
 func (l *dispatcher) ConsoleLaunch() {
 	l.LaunchFactorio()
 	if l.err != nil {
-		fmt.Printf("Launcher error: %s\n", l.err)
+		log.Printf("Launcher error: %s\n", l.err)
 	} else {
-		fmt.Printf("Launched at %s aka %s\n", os.Getenv("ROUTE53_FQDN"), l.ip)
+		log.Printf("Launched at %s aka %s\n", os.Getenv("ROUTE53_FQDN"), l.ip)
 	}
 }
 
@@ -90,7 +90,7 @@ func (l *dispatcher) uploadExecutable() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Uploaded %s\n", file.Name())
+	log.Printf("Uploaded %s\n", file.Name())
 }
 
 func (l *dispatcher) LaunchFactorio() {
