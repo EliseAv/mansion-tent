@@ -2,7 +2,6 @@ package tent
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -42,6 +41,7 @@ func init() {
 		{Sitter.onJoined, *regexp.MustCompile(`^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$`)},
 		{Sitter.onLeft, *regexp.MustCompile(`^....-..-.. ..:..:.. \[LEAVE] (.+) left the game$`)},
 		{Sitter.onSaved, *regexp.MustCompile(`^\s*\d+\.\d+ Info AppManagerStates\.cpp:\d+: Saving finished$`)},
+		{Sitter.onQuitCmd, *regexp.MustCompile(`^\s*\d+\.\d+ Quitting: remote-quit.$`)},
 	}
 }
 
@@ -49,21 +49,16 @@ func (s *sitter) Run() {
 	for s.retry = true; s.retry; {
 		s.launch()
 		go s.watchForShutdown()
-		go s.parseAndPass(os.Stdout, s.stdout, "32")
+		go io.Copy(s.stdin, os.Stdin)
 		go s.parseAndPass(os.Stderr, s.stderr, "31")
-		io.Copy(s.stdin, os.Stdin)
+		s.parseAndPass(os.Stdout, s.stdout, "32")
 	}
 }
 
 func (s *sitter) launch() {
-	log.Printf("Launching game with save %s\n", s.saveName)
+	var err error
+	log.Printf("\033[1;32mLaunching game with save %s\033[0m\n", s.saveName)
 	s.proc = exec.Command("bin/x64/factorio", "--start-server", s.saveName)
-	err := s.proc.Start()
-	if err != nil {
-		cwd, _ := os.Getwd()
-		log.Printf("Working directory: %s\n", cwd)
-		panic(err)
-	}
 	s.stdout, err = s.proc.StdoutPipe()
 	if err != nil {
 		panic(err)
@@ -76,21 +71,26 @@ func (s *sitter) launch() {
 	if err != nil {
 		panic(err)
 	}
+	err = s.proc.Start()
+	if err != nil {
+		cwd, _ := os.Getwd()
+		log.Printf("\033[1;31mWorking directory: %s\033[0m\n", cwd)
+		panic(err)
+	}
 }
 
 func (s *sitter) parseAndPass(out *os.File, in io.ReadCloser, color string) {
 	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
-		line := strings.TrimSuffix(scanner.Text(), "\n")
+		line := scanner.Text()
 		for _, red := range s.regexps {
-			match := red.regex.FindStringSubmatch(line)
+			match := red.regex.FindStringSubmatch(strings.TrimSuffix(line, "\n"))
 			if match != nil {
 				red.callback(match)
 				break
 			}
 		}
-		outLine := fmt.Sprintf("\033[1;%sm%s\033[0m\n", color, line)
-		out.Write([]byte(outLine))
+		out.Write([]byte(line))
 	}
 }
 
@@ -118,6 +118,10 @@ func (s *sitter) onLeft(match []string) {
 	}
 }
 
+func (s *sitter) onQuitCmd(_ []string) {
+	s.retry = false
+}
+
 func (s *sitter) bumpShutdownCheck() {
 	next := time.Now().Add(3 * time.Minute)
 	if s.nextShutdownCheck.Before(next) {
@@ -127,7 +131,7 @@ func (s *sitter) bumpShutdownCheck() {
 
 func (s *sitter) watchForShutdown() {
 	for wait := time.Until(s.nextShutdownCheck); wait > 0; wait = time.Until(s.nextShutdownCheck) {
-		fmt.Printf("\033[1;34mWaiting %s for shutdown check...\033[0m\n", wait)
+		log.Printf("\033[1;34mWaiting %s for shutdown check...\033[0m\n", wait)
 		time.Sleep(wait)
 		if len(s.players) > 0 {
 			// i know this looks like a busy wait, but it's minutes per loop; it'll be fine
