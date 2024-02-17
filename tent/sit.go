@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+const (
+	InitialShutdownGrace = 15 * time.Minute
+	DrainedShutdownGrace = 3 * time.Minute
+)
+
+type void struct{}
+
 type regexpDispatch struct {
 	callback func([]string)
 	regex    regexp.Regexp
@@ -24,7 +31,7 @@ type sitter struct {
 	stdout            io.ReadCloser
 	stderr            io.ReadCloser
 	stdin             io.WriteCloser
-	players           map[string]bool
+	players           map[string]void
 	startedAt         time.Time
 	nextShutdownCheck time.Time
 	regexps           []regexpDispatch
@@ -34,10 +41,10 @@ func NewSitter(hooks *hooks) *sitter {
 	s := &sitter{
 		hooks:     hooks,
 		saveName:  "saves/world.zip",
-		players:   make(map[string]bool),
+		players:   make(map[string]void),
 		startedAt: time.Now(),
 	}
-	s.nextShutdownCheck = s.startedAt.Add(15 * time.Minute)
+	s.nextShutdownCheck = s.startedAt.Add(InitialShutdownGrace)
 	s.regexps = []regexpDispatch{
 		{s.onInGame, *regexp.MustCompile(`^\s*\d+\.\d+ Info ServerMultiplayerManager\.cpp:\d+: updateTick\(tick=(\d+)\) changing state from\(CreatingGame\) to\(InGame\)$`)},
 		{s.onJoined, *regexp.MustCompile(`^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$`)},
@@ -108,7 +115,7 @@ func (s *sitter) onSaved(_ []string) {
 }
 
 func (s *sitter) onJoined(match []string) {
-	s.players[match[1]] = true
+	s.players[match[1]] = void{}
 	go s.hooks.onJoined(match[1])
 }
 
@@ -126,14 +133,14 @@ func (s *sitter) onQuitCmd(_ []string) {
 }
 
 func (s *sitter) bumpShutdownCheck() {
-	next := time.Now().Add(3 * time.Minute)
+	next := time.Now().Add(DrainedShutdownGrace)
 	if s.nextShutdownCheck.Before(next) {
 		s.nextShutdownCheck = next
 	}
 }
 
 func (s *sitter) watchForShutdown() {
-	for wait := time.Until(s.nextShutdownCheck); wait > 0; wait = time.Until(s.nextShutdownCheck) {
+	for wait := InitialShutdownGrace; wait > 0; wait = time.Until(s.nextShutdownCheck) {
 		log.Printf("\033[1;34mWaiting %s for shutdown check...\033[0m\n", wait)
 		time.Sleep(wait)
 		if len(s.players) > 0 {

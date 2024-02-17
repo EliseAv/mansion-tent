@@ -227,8 +227,8 @@ func (t *launcher) uploadSave() {
 }
 
 func inParallel(tasks ...func()) {
-	done := make(chan struct{})
-	sendDone := func() { done <- struct{}{} }
+	done := make(chan void)
+	sendDone := func() { done <- void{} }
 	for i := range tasks {
 		go func(x int) {
 			defer sendDone()
