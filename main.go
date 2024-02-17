@@ -19,14 +19,11 @@ func main() {
 	mode := os.Getenv("TENT_MODE")
 	switch mode {
 	case "":
-		tower.AwsInit()
-		tower.Bot.Run()
+		tower.NewBot().Run()
 	case "launch":
-		tent.AwsInit()
-		tent.Launcher.Run()
+		tent.NewLauncher().Run()
 	case "dispatch":
-		tower.AwsInit()
-		tower.Dispatcher.ConsoleLaunch()
+		tower.NewDispatcher().ConsoleLaunch()
 	default:
 		log.Println("Invalid mode:", mode)
 	}

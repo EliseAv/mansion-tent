@@ -17,23 +17,13 @@ import (
 	"github.com/xi2/xz"
 )
 
-type semaphore chan struct{}
-
-func (s semaphore) send() { s <- struct{}{} }
-func (s semaphore) waitCap() {
-	for i := cap(s); i > 0; i-- {
-		<-s
-	}
-}
-
 type launcher struct {
+	sitter   *sitter
 	s3       *s3.S3
 	s3folder url.URL
 }
 
-var Launcher launcher
-
-func AwsInit() {
+func NewLauncher() *launcher {
 	region := os.Getenv("AWS_REGION_S3")
 	if region == "" {
 		region = os.Getenv("AWS_REGION")
@@ -42,28 +32,26 @@ func AwsInit() {
 		SharedConfigState: session.SharedConfigEnable,
 		Config:            aws.Config{Region: aws.String(region)},
 	}))
-	Launcher.s3 = s3.New(aws)
+	t := &launcher{s3: s3.New(aws)}
+	t.sitter = NewSitter(NewHooks(t))
 
 	parsed, err := url.Parse(os.Getenv("S3_FOLDER_URL"))
 	if err != nil {
 		panic(err)
 	}
 	parsed.Path = strings.Trim(parsed.Path, "/")
-	Launcher.s3folder = *parsed
-	Launcher.s3folder.Path = strings.Trim(Launcher.s3folder.Path, "/")
+	t.s3folder = *parsed
+	t.s3folder.Path = strings.Trim(t.s3folder.Path, "/")
+	return t
 }
 
 func (t *launcher) Run() {
-	done := make(semaphore, 2)
-	go t.downloadGame(done)
-	go t.downloadState(done)
-	done.waitCap()
+	inParallel(t.downloadGame, t.downloadState)
 	os.Chdir("factorio")
-	Sitter.Run()
+	t.sitter.Run()
 }
 
-func (t *launcher) downloadGame(done semaphore) {
-	defer done.send()
+func (t *launcher) downloadGame() {
 	// check if we need to do this
 	_, err := os.Stat("factorio/bin/x64/factorio")
 	if err == nil {
@@ -124,8 +112,7 @@ func (t *launcher) unpackOneFile(unpack *tar.Reader) bool {
 	return true // continue unpacking
 }
 
-func (t *launcher) downloadState(done semaphore) {
-	defer done.send()
+func (t *launcher) downloadState() {
 	// check if we need to do this
 	_, err := os.Stat("factorio/saves")
 	if err == nil {
@@ -230,11 +217,25 @@ func (t *launcher) uploadSave() {
 	}
 	defer file.Close()
 	_, err = t.s3.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String(Launcher.s3folder.Host),
-		Key:    aws.String(Launcher.s3folder.Path + "/" + mostRecent.Name()),
+		Bucket: aws.String(t.s3folder.Host),
+		Key:    aws.String(t.s3folder.Path + "/" + mostRecent.Name()),
 		Body:   file,
 	})
 	if err != nil {
 		log.Printf("Error uploading file: %s\n", err)
+	}
+}
+
+func inParallel(tasks ...func()) {
+	done := make(chan struct{})
+	sendDone := func() { done <- struct{}{} }
+	for i := range tasks {
+		go func(x int) {
+			defer sendDone()
+			tasks[x]()
+		}(i)
+	}
+	for range tasks {
+		<-done
 	}
 }

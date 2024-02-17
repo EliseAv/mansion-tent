@@ -11,13 +11,15 @@ import (
 )
 
 type hooks struct {
-	url string
+	launcher *launcher
+	url      string
 }
 
-var Hooks hooks
-
-func init() {
-	Hooks.url = os.Getenv("WEBHOOK_URL")
+func NewHooks(launcher *launcher) *hooks {
+	return &hooks{
+		launcher: launcher,
+		url:      os.Getenv("WEBHOOK_URL"),
+	}
 }
 
 func (h *hooks) send(message string) {
@@ -43,7 +45,7 @@ func (h *hooks) onLaunched() {
 }
 
 func (h *hooks) onSaved() {
-	Launcher.uploadSave()
+	h.launcher.uploadSave()
 }
 
 func (h *hooks) onJoined(name string) {

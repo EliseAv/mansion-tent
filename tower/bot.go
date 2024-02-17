@@ -14,26 +14,27 @@ type botIds struct {
 }
 
 type bot struct {
-	session *discordgo.Session
-	ids     botIds
+	dispatcher *dispatcher
+	session    *discordgo.Session
+	ids        botIds
 }
 
-var Bot bot
-
-func init() {
+func NewBot() *bot {
+	b := &bot{dispatcher: NewDispatcher()}
 	s, err := discordgo.New("Bot " + os.Getenv("BOT_TOKEN"))
 	if err != nil {
 		log.Fatalf("Error creating Discord session: %v", err)
 	}
-	Bot.session = s
-	Bot.ids = botIds{
+	b.session = s
+	b.ids = botIds{
 		guild:   os.Getenv("GUILD_ID"),
 		channel: os.Getenv("CHANNEL_ID"),
 		dm:      os.Getenv("DM_CHANNEL_ID"),
 	}
-	s.AddHandler(Bot.onReady)
-	s.AddHandler(Bot.onInteractionGo)
+	s.AddHandler(b.onReady)
+	s.AddHandler(b.onInteractionGo)
 	//s.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentMessageContent
+	return b
 }
 
 func (b *bot) Run() {
@@ -87,13 +88,13 @@ func (b *bot) onCommandFactorio(s *discordgo.Session, i *discordgo.InteractionCr
 		return
 	}
 	b.replyLater(i)
-	Dispatcher.LaunchFactorio()
-	if Dispatcher.err != nil {
-		b.replyAmend(i, "Error: "+Dispatcher.err.Error())
+	b.dispatcher.LaunchFactorio()
+	if b.dispatcher.err != nil {
+		b.replyAmend(i, "Error: "+b.dispatcher.err.Error())
 	} else {
 		b.replyAmend(i, fmt.Sprintf(
 			"Factorio server starting at `%s` (`%s`)",
-			os.Getenv("ROUTE53_FQDN"), Dispatcher.ip))
+			os.Getenv("ROUTE53_FQDN"), b.dispatcher.ip))
 	}
 }
 

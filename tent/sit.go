@@ -17,6 +17,7 @@ type regexpDispatch struct {
 }
 
 type sitter struct {
+	hooks             *hooks
 	saveName          string
 	retry             bool
 	proc              *exec.Cmd
@@ -29,20 +30,22 @@ type sitter struct {
 	regexps           []regexpDispatch
 }
 
-var Sitter sitter
-
-func init() {
-	Sitter.saveName = "saves/world.zip"
-	Sitter.players = make(map[string]bool)
-	Sitter.startedAt = time.Now()
-	Sitter.nextShutdownCheck = Sitter.startedAt.Add(15 * time.Minute)
-	Sitter.regexps = []regexpDispatch{
-		{Sitter.onInGame, *regexp.MustCompile(`^\s*\d+\.\d+ Info ServerMultiplayerManager\.cpp:\d+: updateTick\(tick=(\d+)\) changing state from\(CreatingGame\) to\(InGame\)$`)},
-		{Sitter.onJoined, *regexp.MustCompile(`^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$`)},
-		{Sitter.onLeft, *regexp.MustCompile(`^....-..-.. ..:..:.. \[LEAVE] (.+) left the game$`)},
-		{Sitter.onSaved, *regexp.MustCompile(`^\s*\d+\.\d+ Info AppManagerStates\.cpp:\d+: Saving finished$`)},
-		{Sitter.onQuitCmd, *regexp.MustCompile(`^\s*\d+\.\d+ Quitting: remote-quit.$`)},
+func NewSitter(hooks *hooks) *sitter {
+	s := &sitter{
+		hooks:     hooks,
+		saveName:  "saves/world.zip",
+		players:   make(map[string]bool),
+		startedAt: time.Now(),
 	}
+	s.nextShutdownCheck = s.startedAt.Add(15 * time.Minute)
+	s.regexps = []regexpDispatch{
+		{s.onInGame, *regexp.MustCompile(`^\s*\d+\.\d+ Info ServerMultiplayerManager\.cpp:\d+: updateTick\(tick=(\d+)\) changing state from\(CreatingGame\) to\(InGame\)$`)},
+		{s.onJoined, *regexp.MustCompile(`^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$`)},
+		{s.onLeft, *regexp.MustCompile(`^....-..-.. ..:..:.. \[LEAVE] (.+) left the game$`)},
+		{s.onSaved, *regexp.MustCompile(`^\s*\d+\.\d+ Info AppManagerStates\.cpp:\d+: Saving finished$`)},
+		{s.onQuitCmd, *regexp.MustCompile(`^\s*\d+\.\d+ Quitting: remote-quit.$`)},
+	}
+	return s
 }
 
 func (s *sitter) Run() {
@@ -50,8 +53,8 @@ func (s *sitter) Run() {
 		s.launch()
 		go s.watchForShutdown()
 		go io.Copy(s.stdin, os.Stdin)
-		go s.parseAndPass(os.Stderr, s.stderr, "31")
-		s.parseAndPass(os.Stdout, s.stdout, "32")
+		go s.parseAndPass(os.Stderr, s.stderr)
+		s.parseAndPass(os.Stdout, s.stdout)
 	}
 }
 
@@ -79,7 +82,7 @@ func (s *sitter) launch() {
 	}
 }
 
-func (s *sitter) parseAndPass(out *os.File, in io.ReadCloser, color string) {
+func (s *sitter) parseAndPass(out *os.File, in io.ReadCloser) {
 	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -97,24 +100,24 @@ func (s *sitter) parseAndPass(out *os.File, in io.ReadCloser, color string) {
 func (s *sitter) onInGame(_ []string) {
 	s.startedAt = time.Now()
 	s.bumpShutdownCheck()
-	go Hooks.onLaunched()
+	go s.hooks.onLaunched()
 }
 
 func (s *sitter) onSaved(_ []string) {
-	go Hooks.onSaved()
+	go s.hooks.onSaved()
 }
 
 func (s *sitter) onJoined(match []string) {
 	s.players[match[1]] = true
-	go Hooks.onJoined(match[1])
+	go s.hooks.onJoined(match[1])
 }
 
 func (s *sitter) onLeft(match []string) {
 	delete(s.players, match[1])
 	s.bumpShutdownCheck()
-	go Hooks.onLeft(match[1])
+	go s.hooks.onLeft(match[1])
 	if len(s.players) == 0 {
-		go Hooks.onDrained(time.Until(s.nextShutdownCheck))
+		go s.hooks.onDrained(time.Until(s.nextShutdownCheck))
 	}
 }
 
@@ -139,7 +142,7 @@ func (s *sitter) watchForShutdown() {
 		}
 	}
 	// time to shut down!
-	Hooks.onQuit()
+	s.hooks.onQuit()
 	s.stdin.Write([]byte("/quit\n"))
 	s.retry = false
 }

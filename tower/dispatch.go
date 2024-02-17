@@ -33,33 +33,34 @@ type dispatcher struct {
 }
 
 var (
-	Dispatcher dispatcher
-
 	ErrAlreadyRunning  = errors.New("instance already running")
 	ErrNoAMI           = errors.New("no AMI found")
 	ErrNoSecurityGroup = errors.New("no security group found")
 )
 
-func AwsInit() {
+func NewDispatcher() *dispatcher {
 	session := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 		Config:            aws.Config{Region: aws.String(os.Getenv("AWS_REGION"))},
 	}))
-	Dispatcher.aws = session
-	Dispatcher.ec2 = ec2.New(session)
-	Dispatcher.r53 = route53.New(session)
-	Dispatcher.s3 = s3.New(session)
+	l := &dispatcher{
+		aws: session,
+		ec2: ec2.New(session),
+		r53: route53.New(session),
+		s3:  s3.New(session),
+	}
 
 	parsed, err := url.Parse(os.Getenv("S3_FOLDER_URL"))
 	if err != nil {
 		panic(err)
 	}
 	parsed.Path = strings.Trim(parsed.Path, "/")
-	Dispatcher.s3folder = *parsed
-	Dispatcher.s3folder.Path = strings.Trim(Dispatcher.s3folder.Path, "/")
-	Dispatcher.userdata = Dispatcher.generateUserData()
+	l.s3folder = *parsed
+	l.s3folder.Path = strings.Trim(l.s3folder.Path, "/")
+	l.userdata = l.generateUserData()
 
-	Dispatcher.uploadExecutable()
+	l.uploadExecutable()
+	return l
 }
 
 func (l *dispatcher) ConsoleLaunch() {
