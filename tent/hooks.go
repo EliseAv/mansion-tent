@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -23,7 +23,7 @@ func NewHooks(launcher *launcher) *hooks {
 }
 
 func (h *hooks) send(message string) {
-	log.Printf("\033[1;34mWebhook message: %s\033[0m\n", message)
+	slog.Debug("Webhook", "msg", message)
 	if h.url == "" {
 		return
 	}
@@ -32,11 +32,11 @@ func (h *hooks) send(message string) {
 	body, _ := json.Marshal(payload)
 	response, err := http.Post(h.url, "application/json", bytes.NewBuffer(body))
 	if err != nil {
-		log.Printf("\033[1;34mWebhook error: %s\033[0m\n", err)
+		slog.Error("Webhook error", "err", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 204 {
-		log.Printf("\033[1;34mWebhook error: Status code %s\033[0m\n", response.Status)
+		slog.Error("Webhook error", "status", response.Status)
 	}
 }
 

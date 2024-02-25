@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -66,9 +66,9 @@ func NewDispatcher() *dispatcher {
 func (l *dispatcher) ConsoleLaunch() {
 	l.LaunchFactorio()
 	if l.err != nil {
-		log.Printf("Launcher error: %s\n", l.err)
+		slog.Error("Launcher error", "err", l.err)
 	} else {
-		log.Printf("Launched at %s aka %s\n", os.Getenv("ROUTE53_FQDN"), l.ip)
+		slog.Info("Launched instance", "hostname", os.Getenv("ROUTE53_FQDN"), "ip", l.ip)
 	}
 }
 
@@ -91,7 +91,7 @@ func (l *dispatcher) uploadExecutable() {
 	if err != nil {
 		panic(err)
 	}
-	log.Printf("Uploaded %s\n", file.Name())
+	slog.Info("Uploaded", "file", file.Name())
 }
 
 func (l *dispatcher) LaunchFactorio() {

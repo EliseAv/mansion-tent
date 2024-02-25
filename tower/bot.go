@@ -2,7 +2,7 @@ package tower
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 
@@ -23,7 +23,8 @@ func NewBot() *bot {
 	b := &bot{dispatcher: NewDispatcher()}
 	s, err := discordgo.New("Bot " + os.Getenv("BOT_TOKEN"))
 	if err != nil {
-		log.Fatalf("Error creating Discord session: %v", err)
+		slog.Error("Error creating Discord session", "err", err)
+		panic(err)
 	}
 	b.session = s
 	b.ids = botIds{
@@ -40,14 +41,15 @@ func NewBot() *bot {
 func (b *bot) Run() {
 	err := b.session.Open()
 	if err != nil {
-		log.Fatalf("Error opening connection: %v", err)
+		slog.Error("Error opening connection", "err", err)
+		panic(err)
 	}
 	b.setCommands()
 
 	defer b.session.Close()
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
-	log.Println("Bot is now running. Press CTRL-C to exit.")
+	slog.Info("Bot is now running. Press CTRL-C to exit.")
 	<-stop
 }
 
@@ -66,7 +68,7 @@ func (b *bot) setCommands() {
 }
 
 func (b *bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
-	log.Printf("Bot is up as %v#%v!\n", s.State.User.Username, s.State.User.Discriminator)
+	slog.Info("Bot is up as", "name", s.State.User.Username, "discriminator", s.State.User.Discriminator)
 }
 
 func (b *bot) onInteractionGo(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -75,7 +77,7 @@ func (b *bot) onInteractionGo(s *discordgo.Session, i *discordgo.InteractionCrea
 
 func (b *bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	commandData := i.ApplicationCommandData()
-	log.Printf("Interaction received... %v\n", commandData)
+	slog.Debug("Interaction received...", "command", commandData)
 	if commandData.Name == "factorio" {
 		b.onCommandFactorio(s, i)
 	}
@@ -84,7 +86,7 @@ func (b *bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 func (b *bot) onCommandFactorio(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.ChannelID != b.ids.channel && i.ChannelID != b.ids.dm {
 		b.replyQuick(i, "This command can only be used in a specific channel.")
-		log.Printf("Command factorio received in a wrong channel: %v\n", i.ChannelID)
+		slog.Warn("Command factorio received in a wrong channel", "id", i.ChannelID)
 		return
 	}
 	b.replyLater(i)

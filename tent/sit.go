@@ -3,7 +3,7 @@ package tent
 import (
 	"bufio"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -46,7 +46,7 @@ func NewSitter(hooks *hooks) *sitter {
 	}
 	s.nextShutdownCheck = s.startedAt.Add(InitialShutdownGrace)
 	s.regexps = []regexpDispatch{
-		{s.onInGame, *regexp.MustCompile(`^\s*\d+\.\d+ Info ServerMultiplayerManager\.cpp:\d+: updateTick\(tick=(\d+)\) changing state from\(CreatingGame\) to\(InGame\)$`)},
+		{s.onInGame, *regexp.MustCompile(`^\s*\d+\.\d+ Info ServerMultiplayerManager\.cpp:\d+: updateTick\(\d+\) changing state from\(CreatingGame\) to\(InGame\)$`)},
 		{s.onJoined, *regexp.MustCompile(`^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$`)},
 		{s.onLeft, *regexp.MustCompile(`^....-..-.. ..:..:.. \[LEAVE] (.+) left the game$`)},
 		{s.onSaved, *regexp.MustCompile(`^\s*\d+\.\d+ Info AppManagerStates\.cpp:\d+: Saving finished$`)},
@@ -67,7 +67,7 @@ func (s *sitter) Run() {
 
 func (s *sitter) launch() {
 	var err error
-	log.Printf("\033[1;32mLaunching game with save %s\033[0m\n", s.saveName)
+	slog.Info("Launching game", "save", s.saveName)
 	s.proc = exec.Command("bin/x64/factorio", "--start-server", s.saveName)
 	s.stdout, err = s.proc.StdoutPipe()
 	if err != nil {
@@ -84,7 +84,7 @@ func (s *sitter) launch() {
 	err = s.proc.Start()
 	if err != nil {
 		cwd, _ := os.Getwd()
-		log.Printf("\033[1;31mWorking directory: %s\033[0m\n", cwd)
+		slog.Info("Working directory", cwd)
 		panic(err)
 	}
 }
@@ -101,6 +101,7 @@ func (s *sitter) parseAndPass(out *os.File, in io.ReadCloser) {
 			}
 		}
 		out.Write([]byte(line))
+		out.Write([]byte("\n"))
 	}
 }
 
@@ -141,7 +142,8 @@ func (s *sitter) bumpShutdownCheck() {
 
 func (s *sitter) watchForShutdown() {
 	for wait := InitialShutdownGrace; wait > 0; wait = time.Until(s.nextShutdownCheck) {
-		log.Printf("\033[1;34mWaiting %s for shutdown check...\033[0m\n", wait)
+		count := len(s.players)
+		slog.Info("Waiting for next shutdown check", "players", count, "wait", wait)
 		time.Sleep(wait)
 		if len(s.players) > 0 {
 			// i know this looks like a busy wait, but it's minutes per loop; it'll be fine

@@ -3,7 +3,7 @@ package tent
 import (
 	"archive/tar"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -55,14 +55,14 @@ func (t *launcher) downloadGame() {
 	// check if we need to do this
 	_, err := os.Stat("factorio/bin/x64/factorio")
 	if err == nil {
-		log.Printf("Game already downloaded\n")
+		slog.Info("Game already downloaded")
 		return
 	} else if !os.IsNotExist(err) {
 		panic(err)
 	}
 	// download
 	url := "https://www.factorio.com/get-download/latest/headless/linux64"
-	log.Printf("Downloading game from %s\n", url)
+	slog.Info("Downloading game from", "url", url)
 	download, err := http.Get(url)
 	if err != nil {
 		panic(err)
@@ -76,7 +76,7 @@ func (t *launcher) downloadGame() {
 	unpack := tar.NewReader(decompress)
 	for t.unpackOneFile(unpack) {
 	}
-	log.Println("Downloaded game files")
+	slog.Info("Downloaded game files")
 }
 
 func (t *launcher) unpackOneFile(unpack *tar.Reader) bool {
@@ -86,7 +86,7 @@ func (t *launcher) unpackOneFile(unpack *tar.Reader) bool {
 	} else if err != nil {
 		panic(err)
 	}
-	log.Printf("Unpacking %s\n", header.Name)
+	slog.Debug("Unpacking", "file", header.Name)
 	mode := header.FileInfo().Mode()
 	switch header.Typeflag {
 	case tar.TypeDir:
@@ -116,7 +116,7 @@ func (t *launcher) downloadState() {
 	// check if we need to do this
 	_, err := os.Stat("factorio/saves")
 	if err == nil {
-		log.Printf("State files already downloaded\n")
+		slog.Info("State files already downloaded")
 		return
 	} else if !os.IsNotExist(err) {
 		panic(err)
@@ -134,7 +134,7 @@ func (t *launcher) downloadState() {
 		}()
 	}
 	// enumerate files from s3
-	log.Printf("Downloading save files from %s\n", t.s3folder.String())
+	slog.Info("Downloading save files from", "s3", t.s3folder.String())
 	request := &s3.ListObjectsInput{
 		Bucket: aws.String(t.s3folder.Host),
 		Prefix: aws.String(t.s3folder.Path + "/"),
@@ -156,11 +156,11 @@ func (t *launcher) downloadState() {
 	for i := 0; i < cap(queue); i++ {
 		queue <- nil
 	}
-	log.Println("Downloaded save and config/mod files")
+	slog.Info("Downloaded save and config/mod files")
 }
 
 func (t *launcher) downloadOneFile(key *string) {
-	log.Printf("Downloading %s\n", *key)
+	slog.Debug("Downloading", "file", *key)
 	destPath := strings.TrimPrefix(*key, t.s3folder.Path+"/")
 	// download the source file
 	response, err := t.s3.GetObject(&s3.GetObjectInput{
@@ -205,14 +205,14 @@ func (t *launcher) uploadSave() {
 		return nil
 	})
 	if mostRecent == nil {
-		log.Println("No save files found")
+		slog.Warn("No save files found")
 		return
 	}
 	// upload the save
-	log.Printf("Uploading save %s\n", mostRecent.Name())
+	slog.Info("Uploading save", "file", mostRecent.Name())
 	file, err := os.Open(mostRecent.Name())
 	if err != nil {
-		log.Printf("Error opening file: %s\n", err)
+		slog.Error("Error opening file", "err", err)
 		return
 	}
 	defer file.Close()
@@ -222,7 +222,7 @@ func (t *launcher) uploadSave() {
 		Body:   file,
 	})
 	if err != nil {
-		log.Printf("Error uploading file: %s\n", err)
+		slog.Error("Error uploading file", "err", err)
 	}
 }
 
