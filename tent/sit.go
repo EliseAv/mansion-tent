@@ -7,13 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
-)
-
-const (
-	InitialShutdownGrace = 15 * time.Minute
-	DrainedShutdownGrace = 3 * time.Minute
 )
 
 type void struct{}
@@ -35,6 +31,10 @@ type sitter struct {
 	startedAt         time.Time
 	nextShutdownCheck time.Time
 	regexps           []regexpDispatch
+	shutdownGrace     struct {
+		initial time.Duration
+		drained time.Duration
+	}
 }
 
 func NewSitter(hooks *hooks) *sitter {
@@ -44,7 +44,9 @@ func NewSitter(hooks *hooks) *sitter {
 		players:   make(map[string]void),
 		startedAt: time.Now(),
 	}
-	s.nextShutdownCheck = s.startedAt.Add(InitialShutdownGrace)
+	s.shutdownGrace.initial = parseFloatToMinutesOrDefault("SHUTDOWN_GRACE_INITIAL", 15)
+	s.shutdownGrace.drained = parseFloatToMinutesOrDefault("SHUTDOWN_GRACE_DRAINED", 3)
+	s.nextShutdownCheck = s.startedAt.Add(s.shutdownGrace.initial)
 	s.regexps = []regexpDispatch{
 		{s.onInGame, *regexp.MustCompile(`^\s*\d+\.\d+ Info ServerMultiplayerManager\.cpp:\d+: updateTick\(\d+\) changing state from\(CreatingGame\) to\(InGame\)$`)},
 		{s.onJoined, *regexp.MustCompile(`^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$`)},
@@ -53,6 +55,20 @@ func NewSitter(hooks *hooks) *sitter {
 		{s.onQuitCmd, *regexp.MustCompile(`^\s*\d+\.\d+ Quitting: remote-quit.$`)},
 	}
 	return s
+}
+
+func parseFloatToMinutesOrDefault(key string, def float64) time.Duration {
+	value := def
+	str := os.Getenv(key)
+	if str != "" {
+		parsed, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			slog.Warn("Invalid float", "key", key, "value", str, "err", err)
+		} else {
+			value = parsed
+		}
+	}
+	return time.Duration(value * float64(time.Minute))
 }
 
 func (s *sitter) Run() {
@@ -84,7 +100,7 @@ func (s *sitter) launch() {
 	err = s.proc.Start()
 	if err != nil {
 		cwd, _ := os.Getwd()
-		slog.Info("Working directory", cwd)
+		slog.Info("Working directory", "cwd", cwd)
 		panic(err)
 	}
 }
@@ -134,14 +150,14 @@ func (s *sitter) onQuitCmd(_ []string) {
 }
 
 func (s *sitter) bumpShutdownCheck() {
-	next := time.Now().Add(DrainedShutdownGrace)
+	next := time.Now().Add(s.shutdownGrace.drained)
 	if s.nextShutdownCheck.Before(next) {
 		s.nextShutdownCheck = next
 	}
 }
 
 func (s *sitter) watchForShutdown() {
-	for wait := InitialShutdownGrace; wait > 0; wait = time.Until(s.nextShutdownCheck) {
+	for wait := s.shutdownGrace.initial; wait > 0; wait = time.Until(s.nextShutdownCheck) {
 		count := len(s.players)
 		slog.Info("Waiting for next shutdown check", "players", count, "wait", wait)
 		time.Sleep(wait)

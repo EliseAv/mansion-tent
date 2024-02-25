@@ -39,5 +39,5 @@ func main() {
 	default:
 		slog.Error("Failed to start", "mode", mode)
 	}
-	slog.Debug("Exiting cleanly", "elapsed", time.Since(started))
+	slog.Debug("Exiting cleanly", "elapsed", time.Since(started).Round(time.Second))
 }

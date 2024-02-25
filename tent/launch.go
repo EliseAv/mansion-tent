@@ -186,9 +186,10 @@ func (t *launcher) downloadOneFile(key *string) {
 
 func (t *launcher) uploadSave() {
 	// get the most recent save
-	var mostRecent os.FileInfo
+	var mostRecent string
 	var mostRecentTime time.Time
 	filepath.Walk("saves", func(path string, info os.FileInfo, err error) error {
+		slog.Debug("Checking", "file", path)
 		if err != nil {
 			return err
 		}
@@ -199,18 +200,19 @@ func (t *launcher) uploadSave() {
 			modTime := info.ModTime()
 			if mostRecentTime.Before(modTime) {
 				mostRecentTime = info.ModTime()
-				mostRecent = info
+				mostRecent = path
 			}
 		}
 		return nil
 	})
-	if mostRecent == nil {
+	if mostRecent == "" {
 		slog.Warn("No save files found")
 		return
 	}
 	// upload the save
-	slog.Info("Uploading save", "file", mostRecent.Name())
-	file, err := os.Open(mostRecent.Name())
+	started := time.Now()
+	slog.Info("Uploading save", "file", mostRecent)
+	file, err := os.Open(mostRecent)
 	if err != nil {
 		slog.Error("Error opening file", "err", err)
 		return
@@ -218,12 +220,13 @@ func (t *launcher) uploadSave() {
 	defer file.Close()
 	_, err = t.s3.PutObject(&s3.PutObjectInput{
 		Bucket: aws.String(t.s3folder.Host),
-		Key:    aws.String(t.s3folder.Path + "/" + mostRecent.Name()),
+		Key:    aws.String(t.s3folder.Path + "/" + mostRecent),
 		Body:   file,
 	})
 	if err != nil {
 		slog.Error("Error uploading file", "err", err)
 	}
+	slog.Info("Uploaded save", "file", mostRecent, "elapsed", time.Since(started).Round(time.Millisecond))
 }
 
 func inParallel(tasks ...func()) {
