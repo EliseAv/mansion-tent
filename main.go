@@ -2,23 +2,18 @@ package main
 
 import (
 	"log/slog"
+	"mansionTent/share"
 	"mansionTent/tent"
 	"mansionTent/tower"
 	"os"
-	"time"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
 )
 
 func main() {
-	started := time.Now()
-
-	// color my world 💖
-	slog.SetDefault(slog.New(tint.NewHandler(os.Stderr, &tint.Options{
-		Level:      slog.LevelDebug,
-		TimeFormat: "Mon _2 15:04:05",
-	})))
+	timer := share.NewPerfTimer()
 
 	err := godotenv.Load("mt.env")
 	if err != nil {
@@ -26,9 +21,15 @@ func main() {
 		panic(err)
 	}
 
+	// color my world 💖
+	slog.SetDefault(slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+		Level:      parseLevel(os.Getenv("LOG_LEVEL")),
+		TimeFormat: "Mon _2 15:04:05",
+	})))
+
 	// check command-line arguments
 	mode := os.Getenv("TENT_MODE")
-	slog.Debug("Starting", "mode", mode)
+	slog.Info("Starting", "mode", mode)
 	switch mode {
 	case "":
 		tower.NewBot().Run()
@@ -39,5 +40,20 @@ func main() {
 	default:
 		slog.Error("Failed to start", "mode", mode)
 	}
-	slog.Debug("Exiting cleanly", "elapsed", time.Since(started).Round(time.Second))
+	slog.Info("Exiting cleanly", "elapsed", timer.Elapsed())
+}
+
+func parseLevel(level string) slog.Level {
+	switch strings.ToUpper(level) {
+	case "DEBUG":
+		return slog.LevelDebug
+	case "INFO":
+		return slog.LevelInfo
+	case "WARN":
+		return slog.LevelWarn
+	case "ERROR":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

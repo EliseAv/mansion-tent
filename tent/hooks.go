@@ -23,7 +23,7 @@ func NewHooks(launcher *launcher) *hooks {
 }
 
 func (h *hooks) send(message string) {
-	slog.Debug("Webhook", "msg", message)
+	slog.Info("Webhook", "msg", message)
 	if h.url == "" {
 		return
 	}

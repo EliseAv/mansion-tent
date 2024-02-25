@@ -4,11 +4,13 @@ import (
 	"archive/tar"
 	"io"
 	"log/slog"
+	"mansionTent/share"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -46,12 +48,17 @@ func NewLauncher() *launcher {
 }
 
 func (t *launcher) Run() {
-	inParallel(t.downloadGame, t.downloadState)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(2)
+	go t.downloadGame(&waitGroup)
+	go t.downloadState(&waitGroup)
+	waitGroup.Wait()
 	os.Chdir("factorio")
 	t.sitter.Run()
 }
 
-func (t *launcher) downloadGame() {
+func (t *launcher) downloadGame(wg *sync.WaitGroup) {
+	defer wg.Done()
 	// check if we need to do this
 	_, err := os.Stat("factorio/bin/x64/factorio")
 	if err == nil {
@@ -61,6 +68,7 @@ func (t *launcher) downloadGame() {
 		panic(err)
 	}
 	// download
+	timer := share.NewPerfTimer()
 	url := "https://www.factorio.com/get-download/latest/headless/linux64"
 	slog.Info("Downloading game from", "url", url)
 	download, err := http.Get(url)
@@ -76,7 +84,7 @@ func (t *launcher) downloadGame() {
 	unpack := tar.NewReader(decompress)
 	for t.unpackOneFile(unpack) {
 	}
-	slog.Info("Downloaded game files")
+	slog.Info("Downloaded game files", "elapsed", timer.Elapsed())
 }
 
 func (t *launcher) unpackOneFile(unpack *tar.Reader) bool {
@@ -112,7 +120,8 @@ func (t *launcher) unpackOneFile(unpack *tar.Reader) bool {
 	return true // continue unpacking
 }
 
-func (t *launcher) downloadState() {
+func (t *launcher) downloadState(wg *sync.WaitGroup) {
+	defer wg.Done()
 	// check if we need to do this
 	_, err := os.Stat("factorio/saves")
 	if err == nil {
@@ -122,6 +131,7 @@ func (t *launcher) downloadState() {
 		panic(err)
 	}
 	// start downloaders
+	timer := share.NewPerfTimer()
 	queue := make(chan *string, 5)
 	for i := 0; i < cap(queue); i++ {
 		go func() {
@@ -156,12 +166,12 @@ func (t *launcher) downloadState() {
 	for i := 0; i < cap(queue); i++ {
 		queue <- nil
 	}
-	slog.Info("Downloaded save and config/mod files")
+	slog.Info("Downloaded save and config/mod files", "elapsed", timer.Elapsed())
 }
 
 func (t *launcher) downloadOneFile(key *string) {
-	slog.Debug("Downloading", "file", *key)
-	destPath := strings.TrimPrefix(*key, t.s3folder.Path+"/")
+	destPath := "factorio/" + strings.TrimPrefix(*key, t.s3folder.Path+"/")
+	slog.Debug("Downloading", "file", *key, "to", destPath)
 	// download the source file
 	response, err := t.s3.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(t.s3folder.Host),
@@ -172,6 +182,10 @@ func (t *launcher) downloadOneFile(key *string) {
 	}
 	defer response.Body.Close()
 	// create the destination file
+	err = os.MkdirAll(filepath.Dir(destPath), 0o755)
+	if err != nil {
+		panic(err)
+	}
 	file, err := os.Create(destPath)
 	if err != nil {
 		panic(err)
@@ -210,7 +224,7 @@ func (t *launcher) uploadSave() {
 		return
 	}
 	// upload the save
-	started := time.Now()
+	timer := share.NewPerfTimer()
 	slog.Info("Uploading save", "file", mostRecent)
 	file, err := os.Open(mostRecent)
 	if err != nil {
@@ -226,19 +240,5 @@ func (t *launcher) uploadSave() {
 	if err != nil {
 		slog.Error("Error uploading file", "err", err)
 	}
-	slog.Info("Uploaded save", "file", mostRecent, "elapsed", time.Since(started).Round(time.Millisecond))
-}
-
-func inParallel(tasks ...func()) {
-	done := make(chan void)
-	sendDone := func() { done <- void{} }
-	for i := range tasks {
-		go func(x int) {
-			defer sendDone()
-			tasks[x]()
-		}(i)
-	}
-	for range tasks {
-		<-done
-	}
+	slog.Info("Uploaded save", "file", mostRecent, "elapsed", timer.Elapsed())
 }

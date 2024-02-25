@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"log/slog"
+	"mansionTent/share"
 	"os"
 	"os/exec"
 	"regexp"
@@ -11,8 +12,6 @@ import (
 	"strings"
 	"time"
 )
-
-type void struct{}
 
 type regexpDispatch struct {
 	callback func([]string)
@@ -27,8 +26,7 @@ type sitter struct {
 	stdout            io.ReadCloser
 	stderr            io.ReadCloser
 	stdin             io.WriteCloser
-	players           map[string]void
-	startedAt         time.Time
+	players           share.Set[string]
 	nextShutdownCheck time.Time
 	regexps           []regexpDispatch
 	shutdownGrace     struct {
@@ -39,14 +37,12 @@ type sitter struct {
 
 func NewSitter(hooks *hooks) *sitter {
 	s := &sitter{
-		hooks:     hooks,
-		saveName:  "saves/world.zip",
-		players:   make(map[string]void),
-		startedAt: time.Now(),
+		hooks:    hooks,
+		saveName: "saves/world.zip",
 	}
-	s.shutdownGrace.initial = parseFloatToMinutesOrDefault("SHUTDOWN_GRACE_INITIAL", 15)
-	s.shutdownGrace.drained = parseFloatToMinutesOrDefault("SHUTDOWN_GRACE_DRAINED", 3)
-	s.nextShutdownCheck = s.startedAt.Add(s.shutdownGrace.initial)
+	s.nextShutdownCheck = time.Now().Add(s.shutdownGrace.initial)
+	s.shutdownGrace.initial = parseFloatToMinutesOrDefault("SHUTDOWN_GRACE_INITIAL_MINUTES", 15)
+	s.shutdownGrace.drained = parseFloatToMinutesOrDefault("SHUTDOWN_GRACE_DRAINED_MINUTES", 3)
 	s.regexps = []regexpDispatch{
 		{s.onInGame, *regexp.MustCompile(`^\s*\d+\.\d+ Info ServerMultiplayerManager\.cpp:\d+: updateTick\(\d+\) changing state from\(CreatingGame\) to\(InGame\)$`)},
 		{s.onJoined, *regexp.MustCompile(`^....-..-.. ..:..:.. \[JOIN] (.+) joined the game$`)},
@@ -122,8 +118,7 @@ func (s *sitter) parseAndPass(out *os.File, in io.ReadCloser) {
 }
 
 func (s *sitter) onInGame(_ []string) {
-	s.startedAt = time.Now()
-	s.bumpShutdownCheck()
+	s.nextShutdownCheck = time.Now().Add(s.shutdownGrace.initial)
 	go s.hooks.onLaunched()
 }
 
@@ -132,15 +127,15 @@ func (s *sitter) onSaved(_ []string) {
 }
 
 func (s *sitter) onJoined(match []string) {
-	s.players[match[1]] = void{}
+	s.players.Add(match[1])
 	go s.hooks.onJoined(match[1])
 }
 
 func (s *sitter) onLeft(match []string) {
-	delete(s.players, match[1])
+	s.players.Remove(match[1])
 	s.bumpShutdownCheck()
 	go s.hooks.onLeft(match[1])
-	if len(s.players) == 0 {
+	if s.players.IsEmpty() {
 		go s.hooks.onDrained(time.Until(s.nextShutdownCheck))
 	}
 }
@@ -158,15 +153,15 @@ func (s *sitter) bumpShutdownCheck() {
 
 func (s *sitter) watchForShutdown() {
 	for wait := s.shutdownGrace.initial; wait > 0; wait = time.Until(s.nextShutdownCheck) {
-		count := len(s.players)
-		slog.Info("Waiting for next shutdown check", "players", count, "wait", wait)
+		slog.Info("Waiting for next shutdown check", "players", s.players.Len(), "wait", wait)
 		time.Sleep(wait)
-		if len(s.players) > 0 {
+		if !s.players.IsEmpty() {
 			// i know this looks like a busy wait, but it's minutes per loop; it'll be fine
 			s.bumpShutdownCheck()
 		}
 	}
 	// time to shut down!
+	slog.Info("Shutting down")
 	s.hooks.onQuit()
 	s.stdin.Write([]byte("/quit\n"))
 	s.retry = false
