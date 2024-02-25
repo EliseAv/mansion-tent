@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -27,7 +28,7 @@ type dispatcher struct {
 	s3       *s3.S3
 	s3folder url.URL
 	userdata *string
-	trying   bool
+	trying   sync.Mutex
 	err      error
 	ip       string
 }
@@ -101,14 +102,13 @@ func (l *dispatcher) LaunchFactorio() {
 			debug.PrintStack()
 		}
 	}()
-	if l.trying {
+	if !l.trying.TryLock() {
 		panic(ErrAlreadyRunning)
 	}
-	l.trying = true
 	l.checkIfAlreadyRunning()
 	l.createInstance()
 	l.updateDnsRecord()
-	l.trying = false
+	l.trying.Unlock()
 }
 
 func (l *dispatcher) getLatestAmazonLinuxAMI() *ec2.Image {
