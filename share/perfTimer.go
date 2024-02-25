@@ -5,24 +5,32 @@ import (
 	"time"
 )
 
-var timeThresholds = []time.Duration{
-	time.Millisecond,
-	time.Second,
-	time.Minute,
-	time.Hour,
-	time.Hour * 24,
+var magnitudes = []struct {
+	threshold time.Duration
+	round     time.Duration
+}{
+	{0, time.Millisecond},
+	{time.Second, 10 * time.Millisecond},
+	{time.Minute, 100 * time.Millisecond},
+	{10 * time.Minute, time.Second},
 }
 
 type PerfTimer time.Time
+type Elapsed time.Duration
 
 func NewPerfTimer() PerfTimer {
 	return PerfTimer(time.Now())
 }
 
-func (t PerfTimer) Elapsed() time.Duration {
-	result := time.Since(time.Time(t))
-	pos := sort.Search(len(timeThresholds), func(i int) bool {
-		return timeThresholds[i] > result
+func (t PerfTimer) Elapsed() Elapsed {
+	return Elapsed(time.Since(time.Time(t)))
+}
+
+func (t Elapsed) String() string {
+	value := time.Duration(t)
+	pos := sort.Search(len(magnitudes), func(i int) bool {
+		return magnitudes[i].threshold > value
 	})
-	return result.Round(timeThresholds[max(pos-2, 0)])
+	i := max(pos-1, 0)
+	return value.Round(magnitudes[i].round).String()
 }
