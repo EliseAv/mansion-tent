@@ -135,7 +135,7 @@ func (s *sitter) onLeft(match []string) {
 	s.players.Remove(match[1])
 	s.bumpShutdownCheck()
 	go s.hooks.onLeft(match[1])
-	if s.players.IsEmpty() {
+	if s.players.Len() == 0 {
 		go s.hooks.onDrained(time.Until(s.nextShutdownCheck))
 	}
 }
@@ -155,7 +155,7 @@ func (s *sitter) watchForShutdown() {
 	for wait := s.shutdownGrace.initial; wait > 0; wait = time.Until(s.nextShutdownCheck) {
 		slog.Info("Waiting for next shutdown check", "players", s.players.Len(), "wait", wait)
 		time.Sleep(wait)
-		if !s.players.IsEmpty() {
+		if s.players.Len() > 0 {
 			// i know this looks like a busy wait, but it's minutes per loop; it'll be fine
 			s.bumpShutdownCheck()
 		}

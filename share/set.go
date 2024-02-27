@@ -22,7 +22,3 @@ func (s *Set[V]) Remove(v V) {
 func (s *Set[V]) Len() int {
 	return len(s.data)
 }
-
-func (s *Set[V]) IsEmpty() bool {
-	return s.Len() == 0
-}

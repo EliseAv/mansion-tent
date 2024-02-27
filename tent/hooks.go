@@ -57,10 +57,7 @@ func (h *hooks) onLeft(name string) {
 }
 
 func (h *hooks) onDrained(timeLeft time.Duration) {
-	const halfSecond = time.Second >> 1
-	// round to the nearest second
-	timeLeft += halfSecond - (timeLeft+halfSecond)%time.Second
-	h.send(fmt.Sprintf("Server is empty, shutting down in %s", timeLeft))
+	h.send(fmt.Sprintf("Server is empty, shutting down in %s", timeLeft.Round(time.Second)))
 }
 
 func (h *hooks) onQuit() {

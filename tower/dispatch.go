@@ -39,6 +39,10 @@ var (
 	ErrNoSecurityGroup = errors.New("no security group found")
 )
 
+func RunDispatcher() {
+	NewDispatcher().ConsoleLaunch()
+}
+
 func NewDispatcher() *dispatcher {
 	session := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
@@ -156,7 +160,6 @@ func (l *dispatcher) generateUserData() *string {
 	if err != nil {
 		panic(err)
 	}
-	values["TENT_MODE"] = "launch"
 	marshalled, err := godotenv.Marshal(values)
 	if err != nil {
 		panic(err)
@@ -167,7 +170,7 @@ func (l *dispatcher) generateUserData() *string {
 		marshalled + "\nEOF\n" +
 		"aws s3 cp " + url + "/mt.x64 /opt/mansionTent/mt.x64\n" +
 		"chmod +x /opt/mansionTent/mt.x64\n" +
-		"sudo -iu ec2-user screen -dm /opt/mansionTent/mt.x64\n"
+		"sudo -iu ec2-user screen -dm /opt/mansionTent/mt.x64 launch\n"
 	encoded := base64.StdEncoding.EncodeToString([]byte(lines))
 	return aws.String(encoded)
 }

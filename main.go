@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"mansionTent/share"
 	"mansionTent/tent"
@@ -28,18 +29,20 @@ func main() {
 	})))
 
 	// check command-line arguments
-	mode := os.Getenv("TENT_MODE")
-	slog.Info("Starting", "mode", mode)
-	switch mode {
-	case "":
-		tower.NewBot().Run()
-	case "launch":
-		tent.NewLauncher().Run()
-	case "dispatch":
-		tower.NewDispatcher().ConsoleLaunch()
-	default:
-		slog.Error("Failed to start", "mode", mode)
+	main := make(map[string]func())
+	main["bot"] = tower.RunBot
+	main["launch"] = tent.RunLauncher
+	main["dispatch"] = tower.RunDispatcher
+	var command string
+	if len(os.Args) > 1 {
+		command = os.Args[1]
 	}
+	f, ok := main[command]
+	if !ok {
+		usage()
+		os.Exit(1)
+	}
+	f()
 	slog.Info("Exiting cleanly", "elapsed", timer.Elapsed())
 }
 
@@ -56,4 +59,12 @@ func parseLevel(level string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func usage() {
+	fmt.Printf("Usage: %s <mode>\n", os.Args[0])
+	fmt.Println("Modes:")
+	fmt.Println("  bot      - Run the bot")
+	fmt.Println("  launch   - Launch the server")
+	fmt.Println("  dispatch - Dispatch the server")
 }

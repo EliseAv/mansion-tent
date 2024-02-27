@@ -25,6 +25,10 @@ type launcher struct {
 	s3folder url.URL
 }
 
+func RunLauncher() {
+	NewLauncher().Run()
+}
+
 func NewLauncher() *launcher {
 	region := os.Getenv("AWS_REGION_S3")
 	if region == "" {

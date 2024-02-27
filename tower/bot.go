@@ -19,6 +19,10 @@ type bot struct {
 	ids        botIds
 }
 
+func RunBot() {
+	NewBot().Run()
+}
+
 func NewBot() *bot {
 	b := &bot{dispatcher: NewDispatcher()}
 	s, err := discordgo.New("Bot " + os.Getenv("BOT_TOKEN"))
