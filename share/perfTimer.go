@@ -16,18 +16,17 @@ var magnitudes = []struct {
 }
 
 type PerfTimer time.Time
-type Elapsed time.Duration
 
 func NewPerfTimer() PerfTimer {
 	return PerfTimer(time.Now())
 }
 
-func (t PerfTimer) Elapsed() Elapsed {
-	return Elapsed(time.Since(time.Time(t)))
+func (p PerfTimer) Elapsed() time.Duration {
+	return time.Since(time.Time(p))
 }
 
-func (t Elapsed) String() string {
-	value := time.Duration(t)
+func (p PerfTimer) String() string {
+	value := p.Elapsed()
 	pos := sort.Search(len(magnitudes), func(i int) bool {
 		return magnitudes[i].threshold > value
 	})

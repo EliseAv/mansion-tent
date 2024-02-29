@@ -88,7 +88,7 @@ func (t *launcher) downloadGame(wg *sync.WaitGroup) {
 	unpack := tar.NewReader(decompress)
 	for t.unpackOneFile(unpack) {
 	}
-	slog.Info("Downloaded game files", "elapsed", timer.Elapsed())
+	slog.Info("Downloaded game files", "elapsed", timer)
 }
 
 func (t *launcher) unpackOneFile(unpack *tar.Reader) bool {
@@ -170,7 +170,7 @@ func (t *launcher) downloadState(wg *sync.WaitGroup) {
 	for i := 0; i < cap(queue); i++ {
 		queue <- nil
 	}
-	slog.Info("Downloaded save and config/mod files", "elapsed", timer.Elapsed())
+	slog.Info("Downloaded save and config/mod files", "elapsed", timer)
 }
 
 func (t *launcher) downloadOneFile(key *string) {
@@ -244,5 +244,5 @@ func (t *launcher) uploadSave() {
 	if err != nil {
 		slog.Error("Error uploading file", "err", err)
 	}
-	slog.Info("Uploaded save", "file", mostRecent, "elapsed", timer.Elapsed())
+	slog.Info("Uploaded save", "file", mostRecent, "elapsed", timer)
 }

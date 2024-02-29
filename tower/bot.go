@@ -87,7 +87,7 @@ func (b *bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func (b *bot) onCommandFactorio(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func (b *bot) onCommandFactorio(_ *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.ChannelID != b.ids.channel && i.ChannelID != b.ids.dm {
 		b.replyQuick(i, "This command can only be used in a specific channel.")
 		slog.Warn("Command factorio received in a wrong channel", "id", i.ChannelID)

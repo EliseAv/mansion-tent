@@ -22,7 +22,6 @@ import (
 )
 
 type dispatcher struct {
-	aws      *session.Session
 	ec2      *ec2.EC2
 	r53      *route53.Route53
 	s3       *s3.S3
@@ -44,15 +43,18 @@ func RunDispatcher() {
 }
 
 func NewDispatcher() *dispatcher {
-	session := session.Must(session.NewSessionWithOptions(session.Options{
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 		Config:            aws.Config{Region: aws.String(os.Getenv("AWS_REGION"))},
 	}))
+	sess3 := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+		Config:            aws.Config{Region: aws.String(os.Getenv("AWS_REGION_S3"))},
+	}))
 	l := &dispatcher{
-		aws: session,
-		ec2: ec2.New(session),
-		r53: route53.New(session),
-		s3:  s3.New(session),
+		ec2: ec2.New(sess),
+		r53: route53.New(sess),
+		s3:  s3.New(sess3),
 	}
 
 	parsed, err := url.Parse(os.Getenv("S3_FOLDER_URL"))

@@ -43,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 	f()
-	slog.Info("Exiting cleanly", "elapsed", timer.Elapsed())
+	slog.Info("Exiting cleanly", "elapsed", timer)
 }
 
 func parseLevel(level string) slog.Level {
