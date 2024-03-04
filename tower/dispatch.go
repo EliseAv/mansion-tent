@@ -29,7 +29,7 @@ type dispatcher struct {
 	userdata *string
 	trying   sync.Mutex
 	err      error
-	ip       string
+	ip       *string
 }
 
 var (
@@ -103,8 +103,7 @@ func (l *dispatcher) uploadExecutable() {
 
 func (l *dispatcher) LaunchFactorio() {
 	defer func() {
-		l.err = recover().(error)
-		if l.err != nil {
+		if recover() != nil {
 			debug.PrintStack()
 		}
 	}()
@@ -142,20 +141,6 @@ func (l *dispatcher) getLatestAmazonLinuxAMI() *ec2.Image {
 	return latestAmi
 }
 
-func (l *dispatcher) getDefaultSecurityGroup() *ec2.SecurityGroup {
-	params := &ec2.DescribeSecurityGroupsInput{
-		GroupNames: []*string{aws.String("default")},
-	}
-	resp, err := l.ec2.DescribeSecurityGroups(params)
-	if err != nil {
-		panic(err)
-	}
-	if len(resp.SecurityGroups) == 0 {
-		panic(ErrNoSecurityGroup)
-	}
-	return resp.SecurityGroups[0]
-}
-
 func (l *dispatcher) generateUserData() *string {
 	url := os.Getenv("S3_FOLDER_URL")
 	values, err := godotenv.Read("mt.env")
@@ -177,24 +162,29 @@ func (l *dispatcher) generateUserData() *string {
 	return aws.String(encoded)
 }
 
+func (l *dispatcher) generateTagSpecifications() []*ec2.TagSpecification {
+	tags := []*ec2.Tag{{
+		Key:   aws.String("Name"),
+		Value: aws.String(os.Getenv("EC2_NAME_TAG")),
+	}}
+	return []*ec2.TagSpecification{
+		{ResourceType: aws.String("instance"), Tags: tags},
+		{ResourceType: aws.String("volume"), Tags: tags},
+	}
+}
+
 func (l *dispatcher) createInstance() {
 	params := &ec2.RunInstancesInput{
-		ImageId:          l.getLatestAmazonLinuxAMI().ImageId,
-		InstanceType:     aws.String(os.Getenv("EC2_INSTANCE_TYPE")),
-		MinCount:         aws.Int64(1),
-		MaxCount:         aws.Int64(1),
-		SecurityGroupIds: []*string{l.getDefaultSecurityGroup().GroupId},
-		UserData:         l.userdata,
-		DryRun:           aws.Bool(false),
+		ImageId:      l.getLatestAmazonLinuxAMI().ImageId,
+		InstanceType: aws.String(os.Getenv("EC2_INSTANCE_TYPE")),
+		MinCount:     aws.Int64(1),
+		MaxCount:     aws.Int64(1),
+		UserData:     l.userdata,
+		DryRun:       aws.Bool(false),
 		IamInstanceProfile: &ec2.IamInstanceProfileSpecification{
 			Name: aws.String(os.Getenv("EC2_IAM_ROLE")),
 		},
-		TagSpecifications: []*ec2.TagSpecification{{
-			Tags: []*ec2.Tag{{
-				Key:   aws.String("Name"),
-				Value: aws.String(os.Getenv("EC2_NAME_TAG")),
-			}},
-		}},
+		TagSpecifications:                 l.generateTagSpecifications(),
 		InstanceInitiatedShutdownBehavior: aws.String("terminate"),
 	}
 	ec2KeyPair := os.Getenv("EC2_KEY_PAIR")
@@ -205,7 +195,12 @@ func (l *dispatcher) createInstance() {
 	if err != nil {
 		panic(err)
 	}
-	l.ip = *reservation.Instances[0].PublicIpAddress
+	instance := reservation.Instances[0]
+	l.ip = instance.PublicIpAddress
+	if l.ip == nil {
+		// TODO: investigate instead of complaining
+		slog.Error("No public IP address", "instance", *instance.InstanceId)
+	}
 }
 
 func (l *dispatcher) checkIfAlreadyRunning() {
@@ -231,7 +226,7 @@ func (l *dispatcher) checkIfAlreadyRunning() {
 
 func (l *dispatcher) updateDnsRecord() {
 	zoneId := os.Getenv("ROUTE53_ZONE_ID")
-	if zoneId == "" {
+	if zoneId == "" || l.ip == nil {
 		return
 	}
 	params := &route53.ChangeResourceRecordSetsInput{
@@ -241,7 +236,7 @@ func (l *dispatcher) updateDnsRecord() {
 				ResourceRecordSet: &route53.ResourceRecordSet{
 					Name: aws.String(os.Getenv("ROUTE53_FQDN")),
 					ResourceRecords: []*route53.ResourceRecord{{
-						Value: aws.String(l.ip),
+						Value: l.ip,
 					}},
 					TTL:  aws.Int64(60),
 					Type: aws.String("A"),

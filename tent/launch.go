@@ -52,6 +52,7 @@ func NewLauncher() *launcher {
 }
 
 func (t *launcher) Run() {
+	slog.Info("Starting launcher")
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(2)
 	go t.downloadGame(&waitGroup)
