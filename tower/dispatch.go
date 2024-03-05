@@ -78,7 +78,7 @@ func (l *dispatcher) ConsoleLaunch() {
 	if l.err != nil {
 		slog.Error("Launcher error", "err", l.err)
 	} else {
-		slog.Info("Launched instance", "hostname", os.Getenv("ROUTE53_FQDN"), "ip", l.ip)
+		slog.Info("Launched instance", "hostname", os.Getenv("ROUTE53_FQDN"), "ip", *l.ip)
 	}
 }
 

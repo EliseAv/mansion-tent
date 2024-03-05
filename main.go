@@ -7,6 +7,7 @@ import (
 	"mansionTent/tent"
 	"mansionTent/tower"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -15,18 +16,8 @@ import (
 
 func main() {
 	timer := share.NewPerfTimer()
-
-	err := godotenv.Load("mt.env")
-	if err != nil {
-		slog.Error("Error loading .env file", "err", err)
-		panic(err)
-	}
-
-	// color my world 💖
-	slog.SetDefault(slog.New(tint.NewHandler(os.Stderr, &tint.Options{
-		Level:      parseLevel(os.Getenv("LOG_LEVEL")),
-		TimeFormat: "Mon _2 15:04:05",
-	})))
+	loadDotEnv()
+	activateLogger()
 
 	// check command-line arguments
 	main := make(map[string]func())
@@ -43,22 +34,43 @@ func main() {
 		os.Exit(1)
 	}
 	f()
+
 	slog.Info("Exiting cleanly", "elapsed", timer)
 }
 
-func parseLevel(level string) slog.Level {
-	switch strings.ToUpper(level) {
-	case "DEBUG":
-		return slog.LevelDebug
-	case "INFO":
-		return slog.LevelInfo
-	case "WARN":
-		return slog.LevelWarn
-	case "ERROR":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
+func loadDotEnv() {
+	// in the tent, mt.env and the binary will be in an unwritable directory, and cwd is for writing all the files
+	binaryPath, err := os.Executable()
+	if err != nil {
+		slog.Error("Error getting binary path", "err", err)
+		panic(err)
 	}
+	envFilePath := filepath.Join(filepath.Dir(binaryPath), "mt.env")
+	err = godotenv.Load(envFilePath)
+	if err != nil {
+		slog.Error("Error loading .env file", "err", err)
+		panic(err)
+	}
+}
+
+func activateLogger() {
+	level := slog.LevelInfo
+	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "WARN":
+		level = slog.LevelWarn
+	case "ERROR":
+		level = slog.LevelError
+	}
+
+	// color my world 💖
+	slog.SetDefault(slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+		Level:      level,
+		TimeFormat: "Mon _2 15:04:05",
+	})))
 }
 
 func usage() {
