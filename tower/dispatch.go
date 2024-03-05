@@ -29,13 +29,16 @@ type dispatcher struct {
 	userdata *string
 	trying   sync.Mutex
 	err      error
+	instance *string
 	ip       *string
 }
 
 var (
-	ErrAlreadyRunning  = errors.New("instance already running")
-	ErrNoAMI           = errors.New("no AMI found")
-	ErrNoSecurityGroup = errors.New("no security group found")
+	ErrAlreadyRunning   = errors.New("instance already running")
+	ErrNoAMI            = errors.New("no AMI found")
+	ErrNoSecurityGroup  = errors.New("no security group found")
+	ErrInstanceNotFound = errors.New("instance not found")
+	ErrInstanceHasNoIP  = errors.New("instance has no IP")
 )
 
 func RunDispatcher() {
@@ -138,6 +141,10 @@ func (l *dispatcher) getLatestAmazonLinuxAMI() *ec2.Image {
 			latestAmi = image
 		}
 	}
+	slog.Debug("Latest AMI",
+		"id", *latestAmi.ImageId,
+		"name", *latestAmi.Name,
+		"date", *latestAmi.CreationDate)
 	return latestAmi
 }
 
@@ -153,7 +160,7 @@ func (l *dispatcher) generateUserData() *string {
 	}
 	lines := "#!/bin/bash\n" +
 		"mkdir -p /opt/mansionTent\n" +
-		"cat EOF > /opt/mansionTent/mt.env <<EOF\n" +
+		"cat > /opt/mansionTent/mt.env <<EOF\n" +
 		marshalled + "\nEOF\n" +
 		"aws s3 cp " + url + "/mt.x64 /opt/mansionTent/mt.x64\n" +
 		"chmod +x /opt/mansionTent/mt.x64\n" +
@@ -196,11 +203,14 @@ func (l *dispatcher) createInstance() {
 		panic(err)
 	}
 	instance := reservation.Instances[0]
-	l.ip = instance.PublicIpAddress
-	if l.ip == nil {
-		// TODO: investigate instead of complaining
-		slog.Error("No public IP address", "instance", *instance.InstanceId)
-	}
+	slog.Debug("Launched",
+		"instance", *instance.InstanceId,
+		"ami", *instance.ImageId,
+		"type", *instance.InstanceType,
+		"key", *instance.KeyName,
+		"state", *instance.State.Name)
+	l.instance = instance.InstanceId
+	l.ip = l.checkForIp()
 }
 
 func (l *dispatcher) checkIfAlreadyRunning() {
@@ -222,6 +232,29 @@ func (l *dispatcher) checkIfAlreadyRunning() {
 			panic(ErrAlreadyRunning)
 		}
 	}
+}
+
+func (l *dispatcher) checkForIp() *string {
+	describe := &ec2.DescribeInstancesInput{
+		InstanceIds: []*string{l.instance},
+	}
+	err := l.ec2.WaitUntilInstanceRunning(describe)
+	if err != nil {
+		panic(err)
+	}
+	slog.Debug("Instance is running", "id", *l.instance)
+	description, err := l.ec2.DescribeInstances(describe)
+	if err != nil {
+		panic(err)
+	}
+	if len(description.Reservations) == 0 || len(description.Reservations[0].Instances) == 0 {
+		panic(ErrInstanceNotFound)
+	}
+	instance := description.Reservations[0].Instances[0]
+	if instance.PublicIpAddress != nil {
+		return instance.PublicIpAddress
+	}
+	panic(ErrInstanceHasNoIP)
 }
 
 func (l *dispatcher) updateDnsRecord() {

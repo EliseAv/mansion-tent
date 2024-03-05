@@ -98,9 +98,9 @@ func (b *bot) onCommandFactorio(_ *discordgo.Session, i *discordgo.InteractionCr
 	if b.dispatcher.err != nil {
 		b.replyAmend(i, "Error: "+b.dispatcher.err.Error())
 	} else {
-		b.replyAmend(i, fmt.Sprintf(
-			"Factorio server starting at `%s` (`%s`)",
-			os.Getenv("ROUTE53_FQDN"), b.dispatcher.ip))
+		msg := fmt.Sprintf("Factorio server starting at `%s` (`%s`)",
+			os.Getenv("ROUTE53_FQDN"), *b.dispatcher.ip)
+		b.replyAmend(i, msg)
 	}
 }
 
