@@ -75,6 +75,7 @@ func (s *sitter) Run() {
 		go s.parseAndPass(os.Stderr, s.stderr)
 		s.parseAndPass(os.Stdout, s.stdout)
 	}
+	s.poweroff()
 }
 
 func (s *sitter) launch() {
@@ -165,4 +166,13 @@ func (s *sitter) watchForShutdown() {
 	s.hooks.onQuit()
 	s.stdin.Write([]byte("/quit\n"))
 	s.retry = false
+}
+
+func (s *sitter) poweroff() {
+	slog.Info("Powering off")
+	cmd := exec.Command("sudo", "shutdown", "-h", "now")
+	err := cmd.Run()
+	if err != nil {
+		panic(err)
+	}
 }

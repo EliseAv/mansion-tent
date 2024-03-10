@@ -61,5 +61,5 @@ func (h *hooks) onDrained(timeLeft time.Duration) {
 }
 
 func (h *hooks) onQuit() {
-	h.send("Server is shutting down")
+	h.send("Server is destroyed! Bye!")
 }
