@@ -54,9 +54,13 @@ func NewDispatcher() *dispatcher {
 		SharedConfigState: session.SharedConfigEnable,
 		Config:            aws.Config{Region: aws.String(os.Getenv("AWS_REGION_S3"))},
 	}))
+	sessUsE1 := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+		Config:            aws.Config{Region: aws.String("us-east-1")},
+	}))
 	l := &dispatcher{
 		ec2: ec2.New(sess),
-		r53: route53.New(sess),
+		r53: route53.New(sessUsE1),
 		s3:  s3.New(sess3),
 	}
 
