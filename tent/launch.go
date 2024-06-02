@@ -74,7 +74,11 @@ func (t *launcher) downloadGame(wg *sync.WaitGroup) {
 	}
 	// download
 	timer := share.NewPerfTimer()
-	url := "https://www.factorio.com/get-download/stable/headless/linux64"
+	version := os.Getenv("FACTORIO_VERSION")
+	if version == "" {
+		version = "stable"
+	}
+	url := "https://www.factorio.com/get-download/" + version + "/headless/linux64"
 	slog.Info("Downloading game from", "url", url)
 	download, err := http.Get(url)
 	if err != nil {
